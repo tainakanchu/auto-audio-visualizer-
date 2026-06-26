@@ -40,6 +40,8 @@ uniform int uVariant;
 uniform float uDir;
 uniform float uSeed;    // 0..1, decorrelates star field per look
 
+float clamp01(float x) { return clamp(x, 0.0, 1.0); }
+
 float hash(vec2 p) {
   p = fract(p * vec2(123.34, 345.45));
   p += dot(p, p + 34.345);
