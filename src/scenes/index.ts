@@ -7,12 +7,13 @@ import { ringsScene } from './rings';
 import { lissajousScene } from './lissajous';
 import { fluidScene } from './fluid';
 import { smokeScene } from './smoke';
+import { lavaScene } from './lava';
 import { auroraScene } from './aurora';
 
 /**
  * Ordered scene registry. The index here maps to keyboard keys 1–9, 0 (=10th).
  * The six Canvas-2D scenes come first, then the WebGL2 "rich" scenes
- * (fluid, smoke, aurora).
+ * (fluid, smoke, lava, aurora).
  */
 export const scenes: Scene[] = [
   barsScene,
@@ -23,6 +24,7 @@ export const scenes: Scene[] = [
   lissajousScene,
   fluidScene,
   smokeScene,
+  lavaScene,
   auroraScene,
 ];
 
