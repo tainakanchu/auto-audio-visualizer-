@@ -1,0 +1,409 @@
+:root {
+  --panel-bg: rgba(16, 18, 26, 0.62);
+  --panel-border: rgba(255, 255, 255, 0.12);
+  --panel-fg: rgba(236, 240, 248, 0.92);
+  --panel-fg-dim: rgba(236, 240, 248, 0.55);
+  --accent: hsl(200, 90%, 62%);
+  font-family: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, 'Noto Sans JP', sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+
+/* Background is controlled entirely by these classes on <html>. */
+html.bg-black,
+html.bg-black body {
+  background: #000;
+}
+html.bg-transparent,
+html.bg-transparent body {
+  background: transparent;
+}
+
+/* Hide the cursor when the UI is idle. */
+html.cursor-hidden,
+html.cursor-hidden * {
+  cursor: none !important;
+}
+
+#vj-canvas,
+#vj-canvas-gl {
+  position: fixed;
+  inset: 0;
+  display: block;
+  width: 100vw;
+  height: 100vh;
+}
+
+/* Both canvases are transparent; only the active scene's canvas is shown so the
+   compositor never pays for both and page transparency stays intact. */
+#vj-canvas {
+  z-index: 1;
+}
+#vj-canvas-gl {
+  z-index: 0;
+}
+.canvas-hidden {
+  display: none;
+}
+
+/* ---- Control panel ---- */
+.panel {
+  position: fixed;
+  top: 16px;
+  left: 16px;
+  width: 280px;
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  padding: 16px 16px 14px;
+  border-radius: 16px;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  color: var(--panel-fg);
+  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  font-size: 13px;
+  line-height: 1.4;
+  z-index: 10;
+  transition: opacity 0.55s ease;
+  user-select: none;
+}
+
+.panel.faded {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.panel.hidden {
+  display: none;
+}
+
+.panel-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.panel-title {
+  font-size: 14px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+}
+
+.panel-sub {
+  font-size: 11px;
+  color: var(--panel-fg-dim);
+}
+
+.row {
+  margin-bottom: 11px;
+}
+
+.row-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 5px;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  color: var(--panel-fg-dim);
+  text-transform: uppercase;
+}
+
+.row-value {
+  color: var(--panel-fg);
+  font-variant-numeric: tabular-nums;
+  text-transform: none;
+}
+
+.btn {
+  appearance: none;
+  border: 1px solid var(--panel-border);
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--panel-fg);
+  border-radius: 10px;
+  padding: 8px 10px;
+  font-size: 13px;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease;
+}
+.btn:hover {
+  background: rgba(255, 255, 255, 0.12);
+}
+.btn:active {
+  background: rgba(255, 255, 255, 0.18);
+}
+.btn.primary {
+  background: linear-gradient(180deg, hsl(200, 90%, 56%), hsl(205, 90%, 46%));
+  border-color: transparent;
+  color: #fff;
+  font-weight: 600;
+}
+.btn.primary.stop {
+  background: linear-gradient(180deg, hsl(355, 75%, 56%), hsl(350, 75%, 46%));
+}
+.btn.toggle.on {
+  background: rgba(90, 180, 255, 0.22);
+  border-color: rgba(120, 195, 255, 0.5);
+}
+.btn.icon {
+  padding: 8px 0;
+  min-width: 36px;
+  text-align: center;
+}
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* ---- Look / seed gacha ---- */
+.row.look .btn-row.tight {
+  align-items: stretch;
+}
+.seed-value {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 11px;
+  max-width: 150px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.85;
+}
+.seed-input {
+  flex: 1;
+  width: 100%;
+  appearance: none;
+  border: 1px solid var(--panel-border);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--panel-fg);
+  border-radius: 10px;
+  padding: 7px 9px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 12px;
+  letter-spacing: 0.01em;
+}
+.seed-input:focus {
+  outline: none;
+  border-color: rgba(120, 195, 255, 0.6);
+  background: rgba(0, 0, 0, 0.5);
+}
+.btn.gacha {
+  flex: 0 0 auto;
+  min-width: 44px;
+  font-size: 17px;
+  line-height: 1;
+  padding: 6px 0;
+  text-align: center;
+  background: linear-gradient(180deg, hsl(280, 70%, 56%), hsl(255, 75%, 48%));
+  border-color: transparent;
+  color: #fff;
+}
+.btn.gacha:hover {
+  background: linear-gradient(180deg, hsl(285, 78%, 62%), hsl(258, 80%, 52%));
+}
+.btn.gacha:active {
+  transform: scale(0.94);
+}
+
+.btn-row {
+  display: flex;
+  gap: 6px;
+}
+.btn-row > * {
+  flex: 1;
+}
+.btn-row.tight > .btn.icon {
+  flex: 0 0 auto;
+}
+
+select,
+input[type='number'] {
+  width: 100%;
+  appearance: none;
+  border: 1px solid var(--panel-border);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--panel-fg);
+  border-radius: 10px;
+  padding: 7px 9px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+input[type='range'] {
+  width: 100%;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.meters {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 4px 0 10px;
+}
+.level-track {
+  position: relative;
+  flex: 1;
+  height: 8px;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.08);
+  overflow: hidden;
+}
+.level-fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  border-radius: 6px;
+  background: linear-gradient(90deg, hsl(150, 80%, 55%), hsl(50, 90%, 58%), hsl(0, 85%, 58%));
+  transform-origin: left center;
+  transition: transform 0.06s linear;
+}
+.beat-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.15);
+  box-shadow: 0 0 0 0 rgba(120, 200, 255, 0);
+  transition: background 0.08s ease, box-shadow 0.12s ease;
+  flex: 0 0 auto;
+}
+.beat-dot.on {
+  background: hsl(200, 95%, 65%);
+  box-shadow: 0 0 14px 3px rgba(120, 200, 255, 0.8);
+}
+
+/* ---- Tempo (BPM) section ---- */
+.row.tempo {
+  padding-bottom: 11px;
+  border-bottom: 1px solid var(--panel-border);
+}
+.tempo-readout {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.bpm-value {
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 26px;
+  font-weight: 650;
+  line-height: 1;
+  letter-spacing: 0.01em;
+  font-variant-numeric: tabular-nums;
+  color: var(--panel-fg);
+}
+.bpm-unit {
+  margin-left: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--panel-fg-dim);
+}
+.tempo-chip {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  font-size: 10px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  border: 1px solid transparent;
+}
+.tempo-chip.lock {
+  color: hsl(145, 85%, 80%);
+  background: rgba(60, 220, 130, 0.16);
+  border-color: rgba(80, 230, 150, 0.45);
+}
+.tempo-chip.search {
+  color: hsl(38, 95%, 80%);
+  background: rgba(240, 170, 50, 0.16);
+  border-color: rgba(245, 185, 70, 0.42);
+}
+.tempo-chip.tap {
+  color: hsl(270, 90%, 85%);
+  background: rgba(170, 110, 240, 0.18);
+  border-color: rgba(185, 130, 245, 0.5);
+}
+.beat-dots {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.beat-pip {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.14);
+  transition: background 0.08s ease, box-shadow 0.12s ease;
+}
+.beat-pip.downbeat {
+  box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.35);
+}
+.beat-pip.active {
+  background: hsl(200, 95%, 65%);
+  box-shadow: 0 0 10px 2px rgba(120, 200, 255, 0.75);
+}
+.beat-pip.downbeat.active {
+  background: hsl(48, 100%, 65%);
+  box-shadow: 0 0 12px 2px rgba(255, 215, 100, 0.85);
+}
+.tempo-buttons .btn {
+  font-size: 12px;
+  padding: 7px 4px;
+}
+.tempo-buttons .btn.tap {
+  font-weight: 650;
+  background: linear-gradient(180deg, hsl(280, 70%, 56%), hsl(255, 75%, 48%));
+  border-color: transparent;
+  color: #fff;
+}
+.tempo-buttons .btn.tap:hover {
+  background: linear-gradient(180deg, hsl(285, 78%, 62%), hsl(258, 80%, 52%));
+}
+.tempo-buttons .btn.tap:active {
+  transform: scale(0.96);
+}
+
+.error {
+  margin: 4px 0 10px;
+  padding: 8px 10px;
+  border-radius: 10px;
+  font-size: 12px;
+  color: hsl(8, 90%, 82%);
+  background: rgba(220, 60, 50, 0.16);
+  border: 1px solid rgba(220, 80, 70, 0.4);
+}
+
+.cheats {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--panel-border);
+  font-size: 10.5px;
+  line-height: 1.6;
+  color: var(--panel-fg-dim);
+}
+.cheats kbd {
+  display: inline-block;
+  min-width: 14px;
+  padding: 1px 4px;
+  margin: 0 1px;
+  border-radius: 5px;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 10px;
+  color: var(--panel-fg);
+  text-align: center;
+}
