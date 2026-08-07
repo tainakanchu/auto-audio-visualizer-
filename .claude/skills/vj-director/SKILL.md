@@ -243,10 +243,12 @@ catalog をキャッシュし、次回以降は `vj-ctl.mjs catalog` を叩か�
 ローカル検証が誤って通る/落ちることがあるので、そのときは `--refresh-catalog` を付ける。
 
 **この2つのローカル検証は `src/synth/validate.ts` の手作業による複製で、しかも
-budget/cost チェックを含まない。** 複製はすでに一部古くなっている実例がある —
+budget/cost チェックを含まない。** 複製は放っておくと古くなる実例が実際にあった —
 `src/synth/validate.ts` の `AUDIO_SOURCES`（route の `source` に書ける `audio:*` の
-集合）は 10 種類あるが、`vj-gen.mjs` 側の複製は `audio:beatIntensity` /
-`audio:gridPulse` / `audio:barPulse` の3つが抜けたまま7種類しか無い。加えて、
+集合、10 種類）に対し、`vj-gen.mjs` 側の複製は `audio:beatIntensity` /
+`audio:gridPulse` / `audio:barPulse` の3つが抜けたまま7種類しかなく、この3つを使う
+正当な Patch をローカル検証が誤って弾いていた（修正済み・
+`scripts/constants-drift.test.mjs` がドリフトを恒久的にガードしている）。加えて、
 `src/synth/cost.ts` の `fitsBudget(estimateCost(...))`（render budget 超過チェック）は
 どちらのローカル検証にも**まったく実装されていない**。つまりこの2つのローカル検証を
 通っても、サーバ側で budget 超過として弾かれることがある。**送信前には
@@ -327,9 +329,11 @@ node scripts/vj-tweak.mjs --url wss://example.workers.dev/room/xxxx --refresh-ca
 | `qualityTier=<value>` | qualityTier を変更（low/medium/high） | `qualityTier=high` |
 
 送信前のローカル検証は `src/synth/validate.ts` の主要ルール（generator/parameter の実在・型・
-範囲、enum、ステージ本数の上下限、`palette.mode`）を複製したもの。**この複製はすでに一部
-古くなっており**（`AUDIO_SOURCES` に `audio:beatIntensity` / `audio:gridPulse` /
-`audio:barPulse` が無い — 上の節を参照）、budget/cost チェックも一切含まない。
+範囲、enum、ステージ本数の上下限、`palette.mode`）を複製したもの。**この複製は一度
+古くなって実害を出したことがある**（`AUDIO_SOURCES` に `audio:beatIntensity` /
+`audio:gridPulse` / `audio:barPulse` が抜けていた — 上の節を参照。修正済み・
+`scripts/constants-drift.test.mjs` がドリフトを恒久的にガードしている）が、
+budget/cost チェックは今も一切含まない。
 かつては「CLI は `.ts` を import できない」ことがこの複製の理由だったが、**それはもう
 正しくない** — `scripts/vj-validate.mjs`（後述）が Vite の SSR モジュールローダーで
 `.ts` を直接実行できることを示している。サーバ側のルールを変えたらここも合わせて直す、
