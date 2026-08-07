@@ -156,6 +156,13 @@ function dispatch(
       return ok({ ok: true });
     }
 
+    case 'setBlendMode': {
+      const mode = params?.mode;
+      if (typeof mode !== 'string') return fail('setBlendMode requires params.mode as string');
+      // 不正値は control 側が normal に倒して warning を返す（常に ok）。
+      return ok(control.setBlendMode(mode));
+    }
+
     case 'setImage': {
       const name = params?.name;
       const bytes = params?.bytesBase64;
