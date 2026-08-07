@@ -60,7 +60,7 @@ interface RouteSource {
  * 帯域平均より一桁小さく、同じ比率だと変調が見えない（これが「音に反応して
  * いる感が無い」原因のひとつだった）。
  */
-const ROUTE_SOURCES: readonly RouteSource[] = [
+export const ROUTE_SOURCES: readonly RouteSource[] = [
   { id: 'audio:bass', weight: 3, drive: 1.0, pulse: false },
   { id: 'audio:mid', weight: 2, drive: 1.1, pulse: false },
   { id: 'audio:treble', weight: 2, drive: 1.3, pulse: false },
@@ -125,7 +125,7 @@ const TARGET_KINDS = {
 } as const satisfies Record<string, { weight: number; params: readonly string[] }>;
 
 /** 変調してよい paramId。{@link TARGET_KINDS} の全 params。 */
-const SAFE_TARGET_PARAMS = new Set<string>(
+export const SAFE_TARGET_PARAMS = new Set<string>(
   Object.values(TARGET_KINDS).flatMap((kind) => kind.params),
 );
 
@@ -153,10 +153,10 @@ const SAME_OPERATOR_PENALTY = 0.35;
  * 動く」が戻ってくる。音で速くなること自体は反応として欲しいので、禁止では
  * なく上限で抑える。
  */
-const MOTION_TARGET_PARAMS = new Set(['speed', 'rate', 'spin', 'twist', 'drift', 'flow']);
+export const MOTION_TARGET_PARAMS = new Set(['speed', 'rate', 'spin', 'twist', 'drift', 'flow']);
 
 /** 動き系 target の amount 比率の上限。 */
-const MOTION_RATIO_MAX = 0.3;
+export const MOTION_RATIO_MAX = 0.3;
 
 /** route 本数の下限 / 上限。 */
 const MIN_ROUTES = 2;
