@@ -72,6 +72,11 @@ function resolveSourceValue(source: string, audio: AudioFrame, t: number): numbe
       return audio.treble;
     case 'audio:level':
       return audio.level;
+    case 'audio:beat':
+    // validate が昔から受け付けているスペル。ビートの「エンベロープ」を意味する
+    // ので beatIntensity と同義にしておく。ここが無いと、検証を通った Patch が
+    // デッキ生成時に UnknownModulationSourceError で落ちる。
+    // falls through
     case 'audio:beatIntensity':
       return audio.beatIntensity;
     case 'audio:gridPulse':

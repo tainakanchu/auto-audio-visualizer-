@@ -96,7 +96,11 @@ export class Renderer {
   setScenes(scenes: Scene[]): void {
     this.scenes = scenes;
     if (!this.current && scenes.length > 0) {
-      this.setScene(scenes[0].id);
+      // 先頭が GL シーンで WebGL2 が無い環境だと activate に失敗するので、
+      // 実際に描けるものが見つかるまで下る。ここで諦めると何も描画されない。
+      for (const scene of scenes) {
+        if (this.setScene(scene.id)) break;
+      }
     }
   }
 
@@ -127,13 +131,18 @@ export class Renderer {
     return this.probedAvailable;
   }
 
-  /** Activate a scene by id and run its init/setup. */
-  setScene(id: string): void {
+  /**
+   * Activate a scene by id and run its init/setup.
+   *
+   * 戻り値は「そのシーンが実際に有効になったか」。未知の id と、WebGL2 が
+   * 無い環境の GL シーンは false を返す（呼び出し側が代わりを選べるように）。
+   */
+  setScene(id: string): boolean {
     const next = this.scenes.find((s) => s.id === id);
-    if (!next) return;
+    if (!next) return false;
 
     // Refuse to activate a GL scene when WebGL2 can't be obtained — stay put.
-    if (next.kind === 'gl' && !this.ensureGl()) return;
+    if (next.kind === 'gl' && !this.ensureGl()) return false;
 
     const prev = this.current;
     if (prev && prev !== next) this.deactivate(prev);
@@ -152,6 +161,7 @@ export class Renderer {
       // Drop any residual 2D content so it can't bleed through.
       this.ctx.clearRect(0, 0, this.cssW, this.cssH);
     }
+    return true;
   }
 
   /** Tear down visibility/state for the scene being left (keeps GPU resources). */

@@ -13,10 +13,14 @@ import { semanticSynthScene } from './semanticSynth';
 
 /**
  * Ordered scene registry. The index here maps to keyboard keys 1–9, 0 (=10th).
- * The six Canvas-2D scenes come first, then the WebGL2 "rich" scenes
- * (fluid, smoke, lava, aurora), then semantic-synth (Phase 1).
+ *
+ * semantic-synth が先頭 = 既定であり、キー `1`。以降は Canvas-2D の 6 シーン、
+ * WebGL2 のリッチシーン（fluid / smoke / lava / aurora）と続く。
+ * 数字キーは 10 個しかないので、末尾の 1 つ（aurora）はキー割り当てが無い。
+ * `[` / `]`・シーンピッカー・`?scene=aurora` からは従来どおり選べる。
  */
 export const scenes: Scene[] = [
+  semanticSynthScene,
   barsScene,
   waveformScene,
   particlesScene,
@@ -27,8 +31,18 @@ export const scenes: Scene[] = [
   smokeScene,
   lavaScene,
   auroraScene,
-  semanticSynthScene,
 ];
+
+/** 何も指定が無いときに開くシーン。 */
+export const DEFAULT_SCENE_ID = semanticSynthScene.id;
+
+/**
+ * WebGL2 が無い環境で {@link DEFAULT_SCENE_ID} を開けなかったときの逃げ先。
+ *
+ * 既定が GL シーンになった以上、これが無いと非対応環境で「何も描かれない
+ * 真っ黒な画面」になる（Renderer は開けない GL シーンの activate を拒否する）。
+ */
+export const FALLBACK_SCENE_ID = barsScene.id;
 
 export function sceneIndexById(id: string): number {
   const i = scenes.findIndex((s) => s.id === id);

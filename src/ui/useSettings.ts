@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { DEFAULT_SCENE_ID } from '../scenes';
 
 export type HueMode = 'cycle' | 'fixed';
 export type Background = 'black' | 'transparent';
@@ -35,7 +36,7 @@ const STORAGE_KEY = 'vj-overlay-settings';
 const SEED_MAX_LEN = 64;
 
 const DEFAULT_SETTINGS: Settings = {
-  sceneId: 'bars',
+  sceneId: DEFAULT_SCENE_ID,
   gain: 1.5,
   hueMode: 'cycle',
   fixedHue: 200,

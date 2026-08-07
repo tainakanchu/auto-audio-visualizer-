@@ -36,22 +36,117 @@ const PALETTE_MODES: readonly PaletteMode[] = [
   'rainbow',
 ];
 
+interface RouteSource {
+  id: string;
+  /** 選ばれやすさ。大きいほど選ばれやすい（重み付きランデブー）。 */
+  weight: number;
+  /** amount 比率の補正。ソースごとに実効レンジが違うのを吸収する。 */
+  drive: number;
+  /** 拍で立ち上がって減衰するパルス系か。平滑と極性の扱いが変わる。 */
+  pulse: boolean;
+}
+
 /**
- * Audio→param route sources for derived patches.
+ * Audio→param route の source 候補。
  *
- * Design intent prefers beatIntensity/gridPulse (see modulation engine), but
- * validate.ts currently allows bass/mid/treble/level/beat/barPhase/beatPhase
- * and rejects beatIntensity/gridPulse. Use the intersection of validate-accepted
- * sources and modulation-resolved sources so routes always pass validatePatch.
+ * `audio:beatPhase` / `audio:barPhase` は**入っていない**。あれはテンポグリッド
+ * 上の位置を返すノコギリ波で、音量に関係なく（無音でも）回り続けるため、
+ * 変調に使っても「音に反応している」感には一切ならない。
+ *
+ * 同じ理由で拍系は `audio:gridPulse` ではなく `audio:beatIntensity` を使う。
+ * gridPulse はブレイク中もフリーホイールするので無音でも脈打つ。
+ *
+ * `drive` は「そのソースが実際にどこまで振れるか」の補正。`level` は RMS なので
+ * 帯域平均より一桁小さく、同じ比率だと変調が見えない（これが「音に反応して
+ * いる感が無い」原因のひとつだった）。
  */
-const ROUTE_SOURCES = [
-  'audio:bass',
-  'audio:mid',
-  'audio:treble',
-  'audio:level',
-  'audio:beatPhase',
-  'audio:barPhase',
-] as const;
+const ROUTE_SOURCES: readonly RouteSource[] = [
+  { id: 'audio:bass', weight: 3, drive: 1.0, pulse: false },
+  { id: 'audio:mid', weight: 2, drive: 1.1, pulse: false },
+  { id: 'audio:treble', weight: 2, drive: 1.3, pulse: false },
+  { id: 'audio:level', weight: 2, drive: 2.2, pulse: false },
+  { id: 'audio:beatIntensity', weight: 3, drive: 1.0, pulse: true },
+];
+
+/**
+ * derive が変調してよいパラメータ名の**許可リスト**。
+ *
+ * 拒否リストではなく許可リストなのは、「音に反応して画が消える」ことを
+ * 構造的に禁止するため。`threshold` / `gate` / `dropout` のように**上げると絵が
+ * 消える**パラメータが 106 個の Generator に散らばっていて、名前で危険なものを
+ * 数え上げるやり方だと必ず取りこぼす。クラブの大音量下でずっと真っ暗、という
+ * 事故は「たまに起きる」では済まないので、安全側が既定になる形にしてある。
+ *
+ * ここに載るのは「増える = 見える / 動く」方向のパラメータだけ。極性を
+ * unipolar に固定してあるので（{@link buildRoutes}）、音は常に**足す**方向にしか
+ * 効かない = 無音時の見た目が Patch の下限で、音が入るほど増える。
+ *
+ * 手で組んだ Patch はこの制限を受けない（proposePatch は validate だけ通る）。
+ */
+const SAFE_TARGET_PARAMS = new Set([
+  // 量・密度
+  'amount',
+  'density',
+  'count',
+  'intensity',
+  'strength',
+  'glow',
+  'brightness',
+  'sparkle',
+  'sheen',
+  // 大きさ
+  'scale',
+  'size',
+  'thickness',
+  'radius',
+  'width',
+  'depth',
+  // 動き
+  'speed',
+  'rate',
+  'spin',
+  'twist',
+  'wobble',
+  'drift',
+  'flow',
+  'vortex',
+  'pull',
+  'tension',
+  // 空間の歪み
+  'warp',
+  'zoom',
+  'shift',
+]);
+
+/**
+ * 動きの速さそのものを持つパラメータ。{@link SAFE_TARGET_PARAMS} の部分集合で、
+ * 変調の振り幅だけ別に絞る（{@link MOTION_RATIO_MAX}）。
+ *
+ * ここを他と同じ幅で振ると、大音量のときだけ「BPM と関係なくギュインギュイン
+ * 動く」が戻ってくる。音で速くなること自体は反応として欲しいので、禁止では
+ * なく上限で抑える。
+ */
+const MOTION_TARGET_PARAMS = new Set(['speed', 'rate', 'spin', 'twist', 'drift', 'flow']);
+
+/** 動き系 target の amount 比率の上限。 */
+const MOTION_RATIO_MAX = 0.3;
+
+/** route 本数の下限 / 上限。 */
+const MIN_ROUTES = 2;
+const MAX_ROUTES = 4;
+
+/**
+ * amount がパラメータレンジに占める比率の下限 / 上限（drive 前）。
+ *
+ * 上限を 0.5 で止めるのは、レンジいっぱいまで足すと今度は逆に「大音量で
+ * 塗り潰されて何も見えない」に振れるため。
+ */
+const AMOUNT_RATIO_MIN = 0.2;
+const AMOUNT_RATIO_MAX = 0.5;
+
+/** パルス系 route の平滑時定数（秒）。拍の立ち上がりを潰さない程度に短く。 */
+const PULSE_SMOOTHING_MIN = 0.05;
+const PULSE_SMOOTHING_MAX = 0.15;
 
 const MAX_STRIP_ATTEMPTS = 32;
 
@@ -262,11 +357,21 @@ function buildPalette(seed: string): VisualPatch['palette'] {
   };
 }
 
+/**
+ * `composition.speed` は Patch 全体の動きの速さで、シーンの MotionClock が
+ * `uTime` の進む速さに掛ける（それまでは Patch に入っているだけで誰も見て
+ * いなかった）。
+ *
+ * 上限を 1 で止めてあるのは、実際に効かせるようにした以上、これまで一律
+ * 等速だったものより**速くなる Patch を作らない**ため。引きによっては
+ * 「BPM と関係なくギュインギュイン動く」のが邪魔、という問題への対処なので、
+ * 大半の Patch はこれで今までよりゆっくりになる。
+ */
 function buildComposition(seed: string): VisualPatch['composition'] {
   return {
     symmetry: randInt(seed, 'patch:comp:symmetry', 0, 1, 8),
     scale: 0.5 + rand(seed, 'patch:comp:scale', 0) * 1.5,
-    speed: 0.25 + rand(seed, 'patch:comp:speed', 0) * 1.75,
+    speed: 0.3 + rand(seed, 'patch:comp:speed', 0) * 0.7,
   };
 }
 
@@ -285,6 +390,10 @@ interface RouteTargetCandidate {
   max: number;
 }
 
+/**
+ * 変調先の候補を集める。{@link SAFE_TARGET_PARAMS} に無いパラメータは、
+ * modulatable でも候補にしない（音で画が消えないための第一の関門）。
+ */
 function collectRouteTargets(
   operators: VisualOperator[],
   defCatalog: ReturnType<typeof createCatalog>,
@@ -295,6 +404,7 @@ function collectRouteTargets(
     if (!def) continue;
     for (const param of def.parameters) {
       if (!param.modulatable) continue;
+      if (!SAFE_TARGET_PARAMS.has(param.id)) continue;
       if (param.kind !== 'number' && param.kind !== 'int') continue;
       if (typeof param.min !== 'number' || typeof param.max !== 'number') continue;
       if (!(param.max > param.min)) continue;
@@ -308,15 +418,50 @@ function collectRouteTargets(
   return out;
 }
 
-function pickStringByRendezvous(seed: string, ns: string, candidates: readonly string[]): string {
-  if (candidates.length === 0) {
-    throw new Error(`pickStringByRendezvous: no candidates for "${ns}"`);
+/**
+ * 重み付きランデブー選択。`weight` が大きい候補ほど勝ちやすい。
+ *
+ * `rand^(1/weight)` は分布が weight に比例する古典的な重み付けで、素の
+ * ランデブー（weight が全部 1）と同じ安定性を保つ: 候補が 1 つ増減しても、
+ * その候補が最大値を取る場合以外は既存 seed の結果が変わらない。
+ */
+function pickWeightedByRendezvous<T>(
+  seed: string,
+  ns: string,
+  candidates: readonly T[],
+  keyOf: (c: T) => string,
+  /** 省略時は全候補等確率（素のランデブーと同じ）。 */
+  weightOf: (c: T) => number = () => 1,
+): T {
+  const first = candidates[0];
+  if (first === undefined) {
+    throw new Error(`pickWeightedByRendezvous: no candidates for "${ns}"`);
   }
-  const weight = (key: string) => rand(seed, ns, namespaceToU32(key));
-  return candidates.reduce((best, c) => (weight(c) > weight(best) ? c : best));
+  const score = (c: T) =>
+    Math.pow(rand(seed, ns, namespaceToU32(keyOf(c))), 1 / Math.max(1e-6, weightOf(c)));
+  return candidates.reduce((best, c) => (score(c) > score(best) ? c : best), first);
 }
 
-/** Build 1–3 audio→param routes against final operators. No duplicate targets. */
+/** target の paramId 部分。`<opId>.<paramId>` 前提。 */
+function paramIdOf(targetKey: string): string {
+  return targetKey.slice(targetKey.indexOf('.') + 1);
+}
+
+/**
+ * Build {@link MIN_ROUTES}–{@link MAX_ROUTES} audio→param routes against final
+ * operators. No duplicate targets.
+ *
+ * Generator 側は 106 個中 8 個しか音の uniform を読まないので、Patch が音に
+ * 反応するかどうかは実質ここで決まる。本数・振り幅ともに控えめだと「音に
+ * 反応している感が無い」Patch になるため、以前より本数も振り幅も増やしてある。
+ *
+ * **不変条件: 音は足す方向にしか効かない。**
+ * - target は {@link SAFE_TARGET_PARAMS}（増える = 見える / 動く）だけ
+ * - polarity は常に unipolar なので、変調量は必ず 0 以上
+ *
+ * つまり無音時の見た目が下限で、音が入るほど増える。大音量が続いても画が
+ * 消える方向には絶対に振れない（クラブでずっと真っ暗、が起きない）。
+ */
 function buildRoutes(
   seed: string,
   operators: VisualOperator[],
@@ -325,34 +470,58 @@ function buildRoutes(
   const targets = collectRouteTargets(operators, defCatalog);
   if (targets.length === 0) return [];
 
-  const count = Math.min(randInt(seed, 'patch:route:count', 0, 1, 3), targets.length);
+  const count = Math.min(
+    randInt(seed, 'patch:route:count', 0, MIN_ROUTES, MAX_ROUTES),
+    targets.length,
+  );
   if (count <= 0) return [];
 
   const remaining = [...targets];
   const routes: ModulationRoute[] = [];
 
   for (let i = 0; i < count; i++) {
-    const source = pickStringByRendezvous(seed, `patch:route:${i}:source`, ROUTE_SOURCES);
-    const targetKeys = remaining.map((t) => t.key);
-    const targetKey = pickStringByRendezvous(seed, `patch:route:${i}:target`, targetKeys);
-    const targetIdx = remaining.findIndex((t) => t.key === targetKey);
-    const target = remaining.splice(targetIdx, 1)[0]!;
+    const source = pickWeightedByRendezvous(
+      seed,
+      `patch:route:${i}:source`,
+      ROUTE_SOURCES,
+      (s) => s.id,
+      (s) => s.weight,
+    );
+    const target = pickWeightedByRendezvous(
+      seed,
+      `patch:route:${i}:target`,
+      remaining,
+      (t) => t.key,
+    );
+    remaining.splice(remaining.indexOf(target), 1);
 
-    const ratio = 0.1 + rand(seed, `patch:route:${i}:amount`, 0) * 0.3;
+    const ratioRaw =
+      AMOUNT_RATIO_MIN +
+      rand(seed, `patch:route:${i}:amount`, 0) * (AMOUNT_RATIO_MAX - AMOUNT_RATIO_MIN);
+    // drive を掛けたあとレンジ全体で頭打ちにする。これを超えても、ソースが少し
+    // 振れただけでパラメータが max に張り付くだけで、動きは増えない。
+    const cap = MOTION_TARGET_PARAMS.has(paramIdOf(target.key)) ? MOTION_RATIO_MAX : 1;
+    const ratio = Math.min(cap, ratioRaw * source.drive);
     const amount = (target.max - target.min) * ratio;
 
-    const polarity: ModulationRoute['polarity'] =
-      rand(seed, `patch:route:${i}:polarity`, 0) < 0.8 ? 'unipolar' : 'bipolar';
-
-    const smoothingRaw =
-      DEFAULT_SMOOTHING + (rand(seed, `patch:route:${i}:smoothing`, 0) * 2 - 1) * 0.4;
-    const smoothing = Math.min(1.6, Math.max(0.4, smoothingRaw));
+    const smoothing = source.pulse
+      ? PULSE_SMOOTHING_MIN +
+        rand(seed, `patch:route:${i}:smoothing`, 0) * (PULSE_SMOOTHING_MAX - PULSE_SMOOTHING_MIN)
+      : Math.min(
+          1.6,
+          Math.max(
+            0.4,
+            DEFAULT_SMOOTHING + (rand(seed, `patch:route:${i}:smoothing`, 0) * 2 - 1) * 0.4,
+          ),
+        );
 
     routes.push({
-      source,
+      source: source.id,
       target: target.key,
       amount,
-      polarity,
+      // 常に unipolar。bipolar は無音時に -amount という定数オフセットになり、
+      // 「音が無いと薄くなる / 消える」を作ってしまう。
+      polarity: 'unipolar',
       smoothing,
     });
   }

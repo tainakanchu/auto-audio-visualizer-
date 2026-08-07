@@ -33,6 +33,7 @@ import {
   createModulationEngine,
   type ModulationEngine,
 } from '../synth/modulation';
+import { createMotionClock } from '../synth/motion';
 import { createQualityController, type QualityController } from '../synth/quality';
 import {
   createRecorder,
@@ -170,6 +171,13 @@ let pending: PendingCompile | null = null;
 /** LRU: oldest at index 0, newest at end. */
 const programCache: CacheEntry[] = [];
 let parallelCompile: { COMPLETION_STATUS_KHR: number } | null | undefined;
+
+/**
+ * シェーダの `uTime` を進める時計。実時間ではなく音のエネルギーで進むので、
+ * 無音では画がほぼ止まる。トランジション / Timeline は実時間 (`t`) のままで、
+ * ここは見た目の動きだけを担当する。
+ */
+const motion = createMotionClock();
 
 // ---- internal resolution ----
 let quality: QualityController | null = null;
@@ -693,16 +701,23 @@ function drawDeck(
   const resolved = modEngine.update(audio, t, dt);
   const values = applyModulation(patch, inlineCatalog, resolved);
 
+  // ビートは音量で殺す。テンポグリッドはブレイク中もフリーホイールするので、
+  // 生の gridPulse をそのまま渡すと無音でも画が拍ごとに跳ねてしまう。
+  const pulse = audio.tempoLocked ? audio.gridPulse : audio.beatIntensity;
+
   gl.useProgram(prog);
   // uRes is the size of the *render target*, so the internal-resolution path
   // keeps the aspect correct (fwidth-based AA follows the target on its own).
   uni.f2('uRes', renderW, renderH);
-  uni.f1('uTime', t);
+  // 実時間ではなく音駆動の時計。無音でほぼ止まるのはここが効いている。
+  uni.f1('uTime', motion.time);
   uni.f1('uBass', audio.bass);
   uni.f1('uMid', audio.mid);
   uni.f1('uTreble', audio.treble);
   uni.f1('uLevel', audio.level);
-  uni.f1('uBeat', audio.tempoLocked ? audio.gridPulse : audio.beatIntensity);
+  uni.f1('uBeat', pulse);
+  uni.f1('uPunch', pulse * motion.energy);
+  uni.f1('uEnergy', motion.energy);
   uni.f1('uFade', fade);
 
   const seedLoc = gl.getUniformLocation(prog, SEED_UNIFORM);
@@ -1013,6 +1028,14 @@ export const semanticSynthScene: GlScene = {
     if (incoming) updateDeck(incoming, nowMs);
     const { fadeA, fadeB } = advanceFade(nowMs);
 
+    // Patch ごとの動きの速さ。クロスフェード中は incoming の速さへ補間するので、
+    // デッキが入れ替わった瞬間に動きの速度が飛ばない。
+    const speedA = front?.live.composition.speed ?? 1;
+    const speedB = incoming?.live.composition.speed ?? speedA;
+    const patchSpeed = phase === 'fading' ? speedA + (speedB - speedA) * fadeB : speedA;
+    // 描画しないフレームでも進めておく（音が鳴っている間に時計が止まらないように）。
+    motion.advance(audio, dt, patchSpeed);
+
     // Keep the controller fed even on frames that draw nothing.
     let scale = quality ? quality.update(dt * 1000, nowMs) : 1;
     if (phase === 'fading') {
@@ -1069,6 +1092,9 @@ export const semanticSynthScene: GlScene = {
     timeline = { lockedUntilSec: 0, events: [] };
     scheduler = createSchedulerState();
     recorder = null;
+    // init() ではなくここでだけ戻す。コンテキストロスト復帰で巻き戻すと、
+    // 復帰した瞬間に画の位相が飛んでしまう。
+    motion.reset();
     pendingTarget = null;
     abandonPending(gl);
     loading = null;
