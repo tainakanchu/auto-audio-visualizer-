@@ -24,6 +24,7 @@ const control = vi.hoisted(() => ({
   startRecording: vi.fn(),
   stopRecording: vi.fn(),
   loadRecording: vi.fn(),
+  setBlendMode: vi.fn(),
 }));
 
 vi.mock('./control', () => ({
@@ -371,6 +372,19 @@ describe('handleBridgeMessage', () => {
     const res = handleBridgeMessage('{"id":3,"method":"proposeSeed","params":{"seed":42}}');
     expect(control.proposeSeed).not.toHaveBeenCalled();
     expect(res).toEqual({ id: 3, error: 'proposeSeed requires params.seed as string' });
+  });
+
+  it('routes setBlendMode', () => {
+    control.setBlendMode.mockReturnValue({ ok: true, mode: 'screen' });
+    const res = handleBridgeMessage('{"id":20,"method":"setBlendMode","params":{"mode":"screen"}}');
+    expect(control.setBlendMode).toHaveBeenCalledWith('screen');
+    expect(res).toEqual({ id: 20, result: { ok: true, mode: 'screen' } });
+  });
+
+  it('rejects setBlendMode with a non-string mode', () => {
+    const res = handleBridgeMessage('{"id":21,"method":"setBlendMode","params":{"mode":1}}');
+    expect(control.setBlendMode).not.toHaveBeenCalled();
+    expect(res).toEqual({ id: 21, error: 'setBlendMode requires params.mode as string' });
   });
 
   it('routes applyTimelineOp', () => {

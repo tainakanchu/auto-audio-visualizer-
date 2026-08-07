@@ -78,6 +78,9 @@ const USAGE = `使い方: node scripts/vj-ctl.mjs <command> [options]
   catalog                      Generator カタログ（id / category / tags / parameters）を表示
   seed <seed>                  seed から派生した Patch へ即遷移
   patch <file.json>            VisualPatch を即適用（検証に落ちると issues が返る）
+  blend <mode>                 オーバーレイ合成のブレンドモード
+                               （normal/screen/multiply/overlay/difference/exclusion/
+                               color-dodge/hard-light/lighten/darken）
   image <file> [--name <n>]    画像 (png/jpg/webp/svg) を読み込ませる（上限 ${
     MAX_IMAGE_BYTES / 1024 / 1024
   }MB）
@@ -104,6 +107,7 @@ room 専用オプション:
 例:
   node scripts/vj-ctl.mjs state
   node scripts/vj-ctl.mjs seed "humid-night-market"
+  node scripts/vj-ctl.mjs blend screen
   node scripts/vj-ctl.mjs image ./logo.png --name event-logo
   node scripts/vj-ctl.mjs event add --in 30 --seed rainy-qilou --transition slow
   node scripts/vj-ctl.mjs event add --bar 8 --patch /tmp/patch.json
@@ -351,6 +355,12 @@ async function run(conn, positional, flags) {
     case 'seed': {
       if (rest.length === 0) usageError('seed には <seed> が必要です');
       return jsonOut(await conn.request('proposeSeed', { seed: rest[0] }));
+    }
+
+    case 'blend': {
+      if (rest.length === 0) usageError('blend には <mode> が必要です');
+      // 不正値も control 側が normal に倒して ok:true + warning を返す。
+      return jsonOut(await conn.request('setBlendMode', { mode: rest[0] }));
     }
 
     case 'patch': {

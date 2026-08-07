@@ -1,5 +1,7 @@
 import type { AudioEngine } from '../audio/AudioEngine';
 import type { GlScene, Scene, Scene2D, SceneContext, GlSceneContext } from '../scenes/types';
+import type { BlendMode } from '../ui/blend';
+import { blendModeToGlobalCompositeOperation, resolveBlendApplication } from '../ui/blend';
 import type { Variation } from '../variation/types';
 import type { Clock } from './clock';
 import { realtimeClock } from './clock';
@@ -93,6 +95,14 @@ export class Renderer {
   private current: Scene | null = null;
   /** Second scene composited over {@link current}, or null for a single layer. */
   private overlay: Scene | null = null;
+  /** Overlay blend mode (`normal` = legacy behaviour; no CSS/GCO changes). */
+  private blendMode: BlendMode = 'normal';
+  /**
+   * GL+GL + non-normal has already been warned once for the current mode.
+   * Reset when leaving that unsupported state so a later re-entry can warn again
+   * without spamming every frame.
+   */
+  private glGlBlendWarned = false;
 
   // ---- WebGL2 (lazy) ----
   private gl: WebGL2RenderingContext | null = null;
@@ -246,6 +256,17 @@ export class Renderer {
     return this.overlay?.id ?? null;
   }
 
+  /**
+   * Set the overlay blend mode. `normal` leaves CSS mix-blend-mode unset and
+   * uses the default Canvas2D GCO path (byte-identical to pre-blend behaviour).
+   * Presentation is re-synced immediately; 2D+2D GCO is applied on the next
+   * overlay draw pass.
+   */
+  setBlendMode(mode: BlendMode): void {
+    this.blendMode = mode;
+    this.syncBlendPresentation();
+  }
+
   /** The overlay actually drawn this frame — null while it duplicates the base. */
   private get effectiveOverlay(): Scene | null {
     return resolveEffectiveOverlay(this.current, this.overlay);
@@ -373,7 +394,8 @@ export class Renderer {
 
   /**
    * Push the base/overlay pairing onto the two canvases: which are displayed
-   * and whether the GL one is lifted above the 2D one.
+   * and whether the GL one is lifted above the 2D one. Also re-applies blend
+   * presentation so layer changes pick up the correct mix-blend-mode target.
    */
   private syncCanvasVisibility(): void {
     const { show2d, showGl, liftGl } = resolveLayerVisibility(
@@ -383,6 +405,53 @@ export class Renderer {
     this.hide2dCanvas(!show2d);
     this.hideGlCanvas(!showGl);
     this.glCanvas.classList.toggle('canvas-lifted', liftGl);
+    this.syncBlendPresentation();
+  }
+
+  /**
+   * Apply (or clear) CSS `mix-blend-mode` on the correct top canvas for the
+   * current base/overlay pairing. Shared-surface pairings do not use CSS:
+   * 2D+2D uses GCO in the draw path; GL+GL keeps the existing GL blend and
+   * warns once when a non-normal mode is requested.
+   *
+   * When blend is `normal` or there is no effective overlay, both canvases'
+   * mix-blend-mode are left unset (empty string) so behaviour matches pre-blend.
+   */
+  private syncBlendPresentation(): void {
+    this.canvas.style.mixBlendMode = '';
+    this.glCanvas.style.mixBlendMode = '';
+
+    const ov = this.effectiveOverlay;
+    if (!ov || this.blendMode === 'normal') {
+      this.glGlBlendWarned = false;
+      return;
+    }
+
+    const app = resolveBlendApplication(this.current?.kind ?? null, ov.kind);
+    if (app === 'css-gl') {
+      this.glCanvas.style.mixBlendMode = this.blendMode;
+      this.glGlBlendWarned = false;
+      return;
+    }
+    if (app === 'css-2d') {
+      this.canvas.style.mixBlendMode = this.blendMode;
+      this.glGlBlendWarned = false;
+      return;
+    }
+    if (app === 'unsupported-gl') {
+      if (!this.glGlBlendWarned) {
+        this.glGlBlendWarned = true;
+        console.warn(
+          `[vj-blend] blend="${this.blendMode}" is not supported for GL+GL overlays. ` +
+            'CSS mix-blend-mode only works for dual-canvas (2D+GL / GL+2D) pairings; ' +
+            '2D+2D uses canvas globalCompositeOperation. Keeping the default GL blend ' +
+            '(ONE, ONE_MINUS_SRC_ALPHA).',
+        );
+      }
+      return;
+    }
+    // gco / none: no CSS to set
+    this.glGlBlendWarned = false;
   }
 
   private hide2dCanvas(hidden: boolean): void {
@@ -500,9 +569,19 @@ export class Renderer {
         // a scene, so it is applied once from the BASE scene and the overlay's
         // own `trail` is deliberately ignored — a second fade would eat the
         // base's freshly drawn pixels before the overlay ever lands on top.
+        // Non-normal blend uses globalCompositeOperation for the overlay pass
+        // only (CSS mix-blend-mode cannot split a single canvas); restore after.
         this.applyTrail(base.trail);
         this.drawScene2dBody(base, t, dt, audio, hue, va);
-        this.drawScene2dBody(ov, t, dt, audio, hue, va);
+        if (this.blendMode === 'normal') {
+          // Byte-identical to the pre-blend path: never touch GCO.
+          this.drawScene2dBody(ov, t, dt, audio, hue, va);
+        } else {
+          const prev = this.ctx.globalCompositeOperation;
+          this.ctx.globalCompositeOperation = blendModeToGlobalCompositeOperation(this.blendMode);
+          this.drawScene2dBody(ov, t, dt, audio, hue, va);
+          this.ctx.globalCompositeOperation = prev;
+        }
       } else {
         // Independent surfaces (2D canvas + GL drawing buffer): each layer
         // clears/fades its own, and CSS stacks GL on top via `.canvas-lifted`.

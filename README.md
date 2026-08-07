@@ -173,6 +173,7 @@ Generator は 105 個中 8 個しか音の uniform を読まないので、**画
 | `seed` | `seed=neon-tiger-042` | look gacha のシード（見た目の個性を決める文字列。最大 64 文字） |
 | `device` | `device=<deviceId>` | 入力デバイス id を指定 |
 | `overlay` | `overlay=rings` | シーンを2層合成する（下＝`scene`、上＝`overlay`）。未指定/`none`/`off`/`0` で無効 |
+| `blend` | `blend=screen` | オーバーレイ合成モード（`normal` / `screen` / `multiply` / `overlay` / `difference` / `exclusion` / `color-dodge` / `hard-light` / `lighten` / `darken`）。オーバーレイ有効時のみ。未指定は `normal`（従来どおり） |
 | `mirror` | `mirror=1` | 中継に表示専用（mirror）として接続する。`room` または `bridge` と併用。応答は返さず同じコマンドを映像に反映するだけ |
 
 例: 透過背景・パネル非表示・パーティクルシーンで起動
@@ -191,10 +192,17 @@ http://localhost:5173/?scene=particles&bg=transparent&ui=hide&gain=2
 http://localhost:5173/?scene=semantic-synth&overlay=rings
 ```
 
+ブレンドモードを付ける例:
+
+```
+http://localhost:5173/?scene=semantic-synth&overlay=rings&blend=screen
+```
+
 - **URL 指定のみ**: `scene` などと違い `overlay` は localStorage に保存されません。一度 `?overlay=rings` を開いただけでオーバーレイが固定されてしまわないようにするための仕様です。
 - **不正な値は警告のうえ無視**: 未知のシーン id や、ベースシーンと同じ id を指定した場合はオーバーレイを無効化し、コンソールに警告を出します（画面は通常描画のまま）。無効化は `none` / `off` / `0`（大小文字不問）でも明示できます。
 - **ベースシーンの切り替えは独立**: `1`–`9` / `[` `]` / シーンピッカーでベースシーンを切り替えても、オーバーレイは指定したまま維持されます。切り替え先がオーバーレイと同じシーンになった場合は、その間だけオーバーレイが一時的に抑制されます。
 - **パフォーマンス**: 2層分の描画コストがかかるため、GPU シーン同士を重ねるなど負荷の高い組み合わせでは fps に注意してください。
+- **`blend`（合成モード）**: 上レイヤー（オーバーレイ）に対して効きます。キャンバスが分かれている組み合わせ（2D ベース + GL オーバーレイ / GL ベース + 2D オーバーレイ）では CSS `mix-blend-mode` を上側キャンバスに適用します。2D+2D（同一キャンバス）ではオーバーレイ描画パスだけ `globalCompositeOperation` を切り替えます。GL+GL は共有コンテキストのため CSS が使えず、非 `normal` 指定時はコンソールに警告を出し既存の GL ブレンドのまま描画します。`blend` も URL 専用で localStorage には保存されません。不正値は警告のうえ `normal` にフォールバックします。オーバーレイが無いときはブレンドは適用されません。Bridge 接続時は CLI からも切り替えできます: `node scripts/vj-ctl.mjs blend screen`（`state` の `blendMode` で確認）。
 
 ## OBS ブラウザソースとして使う
 
