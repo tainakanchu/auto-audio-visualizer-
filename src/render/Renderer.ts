@@ -12,6 +12,50 @@ const MAX_DT = 0.1;
 /** Hard DPR cap for the laptop-iGPU GL canvas (procedural fullscreen passes). */
 const GL_MAX_DPR = 1.5;
 
+/** Which stacked canvases are shown for a given base/overlay pairing. */
+export interface LayerVisibility {
+  /** Show `#vj-canvas` (Canvas-2D, default z-index 1). */
+  show2d: boolean;
+  /** Show `#vj-canvas-gl` (WebGL2, default z-index 0). */
+  showGl: boolean;
+  /** Raise the GL canvas above the 2D one (`.canvas-lifted`). */
+  liftGl: boolean;
+}
+
+/**
+ * Pure resolver for canvas stacking. A layer's canvas is shown when either the
+ * base or the overlay renders on it; the GL canvas is lifted above the 2D one
+ * only when GL is the *overlay* of a 2D base, since its default z-index puts it
+ * underneath.
+ *
+ * With no overlay this reproduces the single-scene behaviour exactly: exactly
+ * one canvas visible and never lifted.
+ */
+export function resolveLayerVisibility(
+  baseKind: '2d' | 'gl' | null,
+  overlayKind: '2d' | 'gl' | null,
+): LayerVisibility {
+  return {
+    show2d: baseKind === '2d' || overlayKind === '2d',
+    showGl: baseKind === 'gl' || overlayKind === 'gl',
+    liftGl: overlayKind === 'gl' && baseKind === '2d',
+  };
+}
+
+/**
+ * Pure overlay suppression: an overlay pointing at the same scene as the base
+ * is dropped rather than drawn twice. This covers the user switching the base
+ * onto the scene that is already the overlay — the pairing is resolved per
+ * frame instead of being rejected, so switching the base back restores it.
+ */
+export function resolveEffectiveOverlay<T extends { id: string }>(
+  base: T | null,
+  overlay: T | null,
+): T | null {
+  if (!overlay) return null;
+  return overlay.id === base?.id ? null : overlay;
+}
+
 export interface RendererOptions {
   /** The Canvas-2D overlay canvas. */
   canvas: HTMLCanvasElement;
@@ -47,6 +91,8 @@ export class Renderer {
 
   private scenes: Scene[] = [];
   private current: Scene | null = null;
+  /** Second scene composited over {@link current}, or null for a single layer. */
+  private overlay: Scene | null = null;
 
   // ---- WebGL2 (lazy) ----
   private gl: WebGL2RenderingContext | null = null;
@@ -152,16 +198,57 @@ export class Renderer {
     if (next.kind === '2d') {
       next.init?.();
       this.ctx.clearRect(0, 0, this.cssW, this.cssH);
-      this.hide2dCanvas(false);
-      this.hideGlCanvas(true);
     } else {
       this.activateGl(next);
-      this.hideGlCanvas(false);
-      this.hide2dCanvas(true);
       // Drop any residual 2D content so it can't bleed through.
       this.ctx.clearRect(0, 0, this.cssW, this.cssH);
     }
+    this.syncCanvasVisibility();
     return true;
+  }
+
+  /**
+   * Set (or clear) the scene composited *over* the base scene.
+   *
+   * null / '' clears the overlay. Returns false without changing anything for
+   * an unknown id, for the scene that is already the base (no self-overlay),
+   * and for a GL scene when WebGL2 can't be obtained.
+   */
+  setOverlayScene(id: string | null): boolean {
+    if (id == null || id === '') {
+      this.overlay = null;
+      this.syncCanvasVisibility();
+      return true;
+    }
+
+    const next = this.scenes.find((s) => s.id === id);
+    if (!next) return false;
+    // Refuse an overlay that is already the base — nothing to composite.
+    if (next.id === this.current?.id) return false;
+    if (next.kind === 'gl' && !this.ensureGl()) return false;
+
+    this.overlay = next;
+    if (next.kind === '2d') {
+      next.init?.();
+      // A 2D overlay over a non-2D base starts on a surface nothing else draws
+      // to this frame, so stale pixels from a previous 2D layer would linger
+      // (and a trail would keep dragging them back). Start clean.
+      if (this.current?.kind !== '2d') this.ctx.clearRect(0, 0, this.cssW, this.cssH);
+    } else {
+      this.activateGl(next);
+    }
+    this.syncCanvasVisibility();
+    return true;
+  }
+
+  /** The requested overlay scene id (even while suppressed), or null. */
+  get overlaySceneId(): string | null {
+    return this.overlay?.id ?? null;
+  }
+
+  /** The overlay actually drawn this frame — null while it duplicates the base. */
+  private get effectiveOverlay(): Scene | null {
+    return resolveEffectiveOverlay(this.current, this.overlay);
   }
 
   /** Tear down visibility/state for the scene being left (keeps GPU resources). */
@@ -198,10 +285,14 @@ export class Renderer {
     this.variation = v;
     const cur = this.current;
     if (!cur) return;
-    if (cur.kind === '2d') {
-      cur.init?.();
+    const ov = this.effectiveOverlay;
+    if (cur.kind === '2d') cur.init?.();
+    if (ov?.kind === '2d') ov.init?.();
+    // Both layers can share a surface, so each one is cleared at most once.
+    if (cur.kind === '2d' || ov?.kind === '2d') {
       this.ctx.clearRect(0, 0, this.cssW, this.cssH);
-    } else if (this.gl) {
+    }
+    if ((cur.kind === 'gl' || ov?.kind === 'gl') && this.gl) {
       this.clearGl();
     }
   }
@@ -280,6 +371,20 @@ export class Renderer {
     gl.clear(gl.COLOR_BUFFER_BIT);
   }
 
+  /**
+   * Push the base/overlay pairing onto the two canvases: which are displayed
+   * and whether the GL one is lifted above the 2D one.
+   */
+  private syncCanvasVisibility(): void {
+    const { show2d, showGl, liftGl } = resolveLayerVisibility(
+      this.current?.kind ?? null,
+      this.effectiveOverlay?.kind ?? null,
+    );
+    this.hide2dCanvas(!show2d);
+    this.hideGlCanvas(!showGl);
+    this.glCanvas.classList.toggle('canvas-lifted', liftGl);
+  }
+
   private hide2dCanvas(hidden: boolean): void {
     this.canvas.classList.toggle('canvas-hidden', hidden);
   }
@@ -297,10 +402,12 @@ export class Renderer {
   };
 
   private readonly onContextRestored = (): void => {
-    // Re-acquire and re-init the active GL scene if one is showing.
+    // Re-acquire and re-init the GL scenes that are showing (base + overlay).
     if (!this.ensureGl()) return;
     const cur = this.current;
     if (cur && cur.kind === 'gl') this.activateGl(cur);
+    const ov = this.effectiveOverlay;
+    if (ov && ov.kind === 'gl') this.activateGl(ov);
   };
 
   // ---- Sizing --------------------------------------------------------------
@@ -339,6 +446,10 @@ export class Renderer {
       if (cur && cur.kind === 'gl' && this.initedGl.has(cur)) {
         cur.resize?.(gl, pxW, pxH);
       }
+      const ov = this.effectiveOverlay;
+      if (ov && ov.kind === 'gl' && this.initedGl.has(ov)) {
+        ov.resize?.(gl, pxW, pxH);
+      }
     }
   }
 
@@ -367,17 +478,57 @@ export class Renderer {
     // Scenes see the variation's hueOffset folded into the base hue.
     const hue = (this.hue + va.hueOffset) % 360;
 
+    // One audio frame per tick: both layers must see the same AudioFrame and
+    // the same gain, or they'd react to slightly different analyses.
     const audio = this.engine.getFrame(this.getGain());
-    const scene = this.current;
-    if (!scene) return;
+    const base = this.current;
+    if (!base) return;
 
-    if (scene.kind === '2d') {
-      this.draw2d(scene, t, dt, audio, hue, va);
-    } else {
-      this.drawGl(scene, t, dt, audio, hue, va);
+    const ov = this.effectiveOverlay;
+    if (!ov) {
+      if (base.kind === '2d') {
+        this.draw2d(base, t, dt, audio, hue, va);
+      } else {
+        this.drawGl(base, t, dt, audio, hue, va);
+      }
+      return;
     }
+
+    if (base.kind === '2d') {
+      if (ov.kind === '2d') {
+        // One shared 2D surface. The trail is a property of the surface, not of
+        // a scene, so it is applied once from the BASE scene and the overlay's
+        // own `trail` is deliberately ignored — a second fade would eat the
+        // base's freshly drawn pixels before the overlay ever lands on top.
+        this.applyTrail(base.trail);
+        this.drawScene2dBody(base, t, dt, audio, hue, va);
+        this.drawScene2dBody(ov, t, dt, audio, hue, va);
+      } else {
+        // Independent surfaces (2D canvas + GL drawing buffer): each layer
+        // clears/fades its own, and CSS stacks GL on top via `.canvas-lifted`.
+        this.draw2d(base, t, dt, audio, hue, va);
+        this.drawGl(ov, t, dt, audio, hue, va);
+      }
+      return;
+    }
+
+    if (ov.kind === '2d') {
+      // Primary case: GL base on its own buffer, 2D overlay on the canvas that
+      // already sits above it.
+      this.drawGl(base, t, dt, audio, hue, va);
+      this.draw2d(ov, t, dt, audio, hue, va);
+      return;
+    }
+
+    // One shared GL context: clear once for the base, then draw the overlay
+    // straight on top of it. `chained = true` re-asserts blend state on the
+    // base pass so it can't inherit whatever the overlay left behind on the
+    // previous frame (see drawGlOverlay's doc for the full invariant).
+    this.drawGl(base, t, dt, audio, hue, va, true);
+    this.drawGlOverlay(ov, t, dt, audio, hue, va);
   };
 
+  /** Full 2D layer pass: prepare the surface, then draw the scene onto it. */
   private draw2d(
     scene: Scene2D,
     t: number,
@@ -387,6 +538,18 @@ export class Renderer {
     va: Variation,
   ): void {
     this.applyTrail(scene.trail);
+    this.drawScene2dBody(scene, t, dt, audio, hue, va);
+  }
+
+  /** Draw a 2D scene onto the current surface state (no trail/clear of its own). */
+  private drawScene2dBody(
+    scene: Scene2D,
+    t: number,
+    dt: number,
+    audio: ReturnType<AudioEngine['getFrame']>,
+    hue: number,
+    va: Variation,
+  ): void {
     const sceneCtx: SceneContext = {
       ctx: this.ctx,
       w: this.cssW,
@@ -400,7 +563,60 @@ export class Renderer {
     scene.draw(sceneCtx);
   }
 
+  /**
+   * Full GL layer pass: clear the drawing buffer, then draw the scene.
+   *
+   * `chained` marks a frame where a second GL layer follows. It re-asserts the
+   * premultiplied blend state so the pairing is symmetric with
+   * {@link drawGlOverlay}: neither pass can inherit blend state the other left
+   * behind. Off by default so the single-layer path issues exactly the GL
+   * calls it always has — no shipped scene actually leaks blend state today
+   * (see {@link drawGlOverlay}'s doc), so this is defensive hardening for the
+   * two-GL-layer invariant, not a fix for an observed bug.
+   */
   private drawGl(
+    scene: GlScene,
+    t: number,
+    dt: number,
+    audio: ReturnType<AudioEngine['getFrame']>,
+    hue: number,
+    va: Variation,
+    chained = false,
+  ): void {
+    const gl = this.gl;
+    if (!gl) return;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.viewport(0, 0, this.glPxW, this.glPxH);
+    if (chained) {
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    }
+    // Clear to transparent each frame so the scene's premultiplied-alpha output
+    // composites over a clean buffer (no feedback accumulation, transparency
+    // preserved for OBS). Scenes that want feedback own their own FBOs.
+    gl.clearColor(0, 0, 0, 0);
+    gl.clear(gl.COLOR_BUFFER_BIT);
+    this.drawGlBody(gl, scene, t, dt, audio, hue, va);
+  }
+
+  /**
+   * Second GL layer pass onto the buffer the base already drew into: no clear,
+   * but canonical GL state is re-asserted first because scenes leak it.
+   *
+   * `semanticSynth` never touches blend state at all — it free-rides the
+   * context-global `blendFunc` set once in `ensureGl()`, so it silently breaks
+   * if a previous scene left something else bound. `fluid` is the mirror image:
+   * it disables BLEND for its offscreen sim passes and only restores the
+   * default framebuffer / viewport / blend at the end of its *full* path — its
+   * fallback path returns early without doing so. Re-asserting here makes the
+   * chain safe whichever of the two runs first.
+   *
+   * `drawGl` does the same when called with `chained = true`, so the base pass
+   * of a GL+GL frame can't leave blend state for the *next* frame's base pass
+   * to inherit — the invariant is documented once, here, for both ends of the
+   * pairing.
+   */
+  private drawGlOverlay(
     scene: GlScene,
     t: number,
     dt: number,
@@ -412,11 +628,21 @@ export class Renderer {
     if (!gl) return;
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.viewport(0, 0, this.glPxW, this.glPxH);
-    // Clear to transparent each frame so the scene's premultiplied-alpha output
-    // composites over a clean buffer (no feedback accumulation, transparency
-    // preserved for OBS). Scenes that want feedback own their own FBOs.
-    gl.clearColor(0, 0, 0, 0);
-    gl.clear(gl.COLOR_BUFFER_BIT);
+    gl.enable(gl.BLEND);
+    gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA);
+    this.drawGlBody(gl, scene, t, dt, audio, hue, va);
+  }
+
+  /** Build the GL scene context and draw, leaving buffer state untouched. */
+  private drawGlBody(
+    gl: WebGL2RenderingContext,
+    scene: GlScene,
+    t: number,
+    dt: number,
+    audio: ReturnType<AudioEngine['getFrame']>,
+    hue: number,
+    va: Variation,
+  ): void {
     const sceneCtx: GlSceneContext = {
       gl,
       w: this.cssW,

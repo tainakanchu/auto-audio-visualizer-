@@ -4,6 +4,7 @@ import { Renderer } from './render/Renderer';
 import { scenes, sceneByIndex, sceneIndexById } from './scenes';
 import { initBridgeClient } from './synth/bridgeClient';
 import { ControlPanel } from './ui/ControlPanel';
+import { resolveOverlaySceneId } from './ui/overlay';
 import { TimelinePanel } from './ui/TimelinePanel';
 import { useSettings } from './ui/useSettings';
 import type { Settings } from './ui/useSettings';
@@ -31,7 +32,7 @@ async function toggleFullscreen(): Promise<void> {
 }
 
 export function App(): React.ReactElement {
-  const { settings, update, initialUiHidden } = useSettings();
+  const { settings, update, initialUiHidden, initialOverlayRaw } = useSettings();
 
   // Deterministic visual variation derived from the seed; recomputed only when
   // the seed string changes.
@@ -52,6 +53,12 @@ export function App(): React.ReactElement {
   // Latest variation, readable at Renderer-construction time.
   const variationRef = useRef(variation);
   variationRef.current = variation;
+
+  // initialOverlayRaw is stable (read once inside useSettings from the URL at
+  // mount); kept in a ref so the mount effect below can read it without
+  // joining the dependency array.
+  const initialOverlayRawRef = useRef(initialOverlayRaw);
+  initialOverlayRawRef.current = initialOverlayRaw;
 
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -85,6 +92,23 @@ export function App(): React.ReactElement {
       const active = renderer.activeSceneId;
       if (active) update({ sceneId: active });
     }
+
+    // renderer.activeSceneId を使うのは意図的（settingsRef.current.sceneId で
+    // はない）: 上の WebGL2 フォールバックで実際に開いたシーンが基準でないと、
+    // ベースシーンとの一致判定（オーバーレイ自己参照の警告）がずれてしまう。
+    const { id: overlayId, warning } = resolveOverlaySceneId(
+      initialOverlayRawRef.current,
+      renderer.activeSceneId ?? '',
+      scenes.map((s) => s.id),
+    );
+    if (warning) {
+      console.warn(`[vj-overlay] ${warning}`);
+    } else if (overlayId && !renderer.setOverlayScene(overlayId)) {
+      console.warn(
+        `[vj-overlay] overlay "${overlayId}" を有効化できませんでした（WebGL2 非対応の可能性）。通常描画にフォールバックします。`,
+      );
+    }
+
     renderer.start();
 
     engineRef.current = engine;

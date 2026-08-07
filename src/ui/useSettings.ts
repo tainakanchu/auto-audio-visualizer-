@@ -79,15 +79,23 @@ function loadStored(): Partial<Settings> {
   return {};
 }
 
-/** Result of reading URL params: setting overrides plus the `ui=hide` flag. */
+/**
+ * Result of reading URL params: setting overrides plus the `ui=hide` flag and
+ * the raw `overlay` value.
+ *
+ * `overlayRaw` is intentionally NOT part of `overrides`/`Settings`: overlay is
+ * URL-only and never persisted to localStorage (see {@link UseSettingsResult}).
+ */
 interface UrlConfig {
   overrides: Partial<Settings>;
   uiHidden: boolean;
+  overlayRaw: string | null;
 }
 
 function readUrl(): UrlConfig {
   const overrides: Partial<Settings> = {};
   let uiHidden = false;
+  let overlayRaw: string | null = null;
   try {
     const p = new URLSearchParams(window.location.search);
 
@@ -131,10 +139,14 @@ function readUrl(): UrlConfig {
     if (seed) overrides.seed = sanitizeSeed(seed);
 
     uiHidden = p.get('ui') === 'hide';
+
+    // overlay は URL 専用（永続化しない）。値の妥当性チェックは行わず、生の
+    // まま持ち出す — 検証はベースシーン id が確定する App 側で行う。
+    overlayRaw = p.get('overlay');
   } catch {
     // Ignore malformed URL.
   }
-  return { overrides, uiHidden };
+  return { overrides, uiHidden, overlayRaw };
 }
 
 function sanitize(s: Settings): Settings {
@@ -160,6 +172,15 @@ export interface UseSettingsResult {
   update: (patch: Partial<Settings>) => void;
   /** Whether the URL requested the UI start hidden (ui=hide). */
   initialUiHidden: boolean;
+  /**
+   * Raw `overlay` URL param value (unvalidated), or null if absent.
+   *
+   * Deliberately URL-only, like `initialUiHidden` — NOT part of `Settings`,
+   * never persisted to localStorage. If it were persisted, a user who once
+   * opened `?overlay=rings` would be stuck with the overlay forever, breaking
+   * the guarantee that "overlay 未指定時は現状と完全に同一の挙動" になる。
+   */
+  initialOverlayRaw: string | null;
 }
 
 /**
@@ -188,5 +209,10 @@ export function useSettings(): UseSettingsResult {
     setSettings((prev) => sanitize({ ...prev, ...patch }));
   }, []);
 
-  return { settings, update, initialUiHidden: url.uiHidden };
+  return {
+    settings,
+    update,
+    initialUiHidden: url.uiHidden,
+    initialOverlayRaw: url.overlayRaw,
+  };
 }
