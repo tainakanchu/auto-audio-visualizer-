@@ -77,6 +77,32 @@ export function rand(seed: string, namespace: string, index: number): number {
   return rand01(h);
 }
 
+/**
+ * 重み付きランデブー（highest-random-weight）選択。`weight` が大きい候補ほど
+ * 勝ちやすい。
+ *
+ * `rand^(1/weight)` は分布が weight に比例する古典的な重み付けで、素の
+ * ランデブーと同じ安定性を保つ: 候補が 1 つ増減しても、その候補が最大値を
+ * 取る場合以外は既存 seed の結果が変わらない。カタログに要素を足したときに
+ * 既存 seed の選択が全面シャッフルされないことが重要な場面で使う。
+ */
+export function pickWeightedByRendezvous<T>(
+  seed: string,
+  ns: string,
+  candidates: readonly T[],
+  keyOf: (c: T) => string,
+  /** 省略時は全候補等確率（素のランデブーと同じ）。 */
+  weightOf: (c: T) => number = () => 1,
+): T {
+  const first = candidates[0];
+  if (first === undefined) {
+    throw new Error(`pickWeightedByRendezvous: no candidates for "${ns}"`);
+  }
+  const score = (c: T) =>
+    Math.pow(rand(seed, ns, namespaceToU32(keyOf(c))), 1 / Math.max(1e-6, weightOf(c)));
+  return candidates.reduce((best, c) => (score(c) > score(best) ? c : best), first);
+}
+
 export interface RngStream {
   /** index を指定した決定的な 0..1。呼び出し順に依存しない。 */
   at(index: number): number;

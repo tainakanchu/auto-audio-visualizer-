@@ -820,6 +820,9 @@ const control: SynthControlBackend = {
       barCount: lastCtx.barCount,
       tempoLocked: lastCtx.tempoLocked,
       firedIds: scheduler.firedIds,
+      // 画面に出ているデッキのもの。クロスフェード中に incoming を返すと、
+      // まだ主役でない Patch の演出を報告することになる。
+      reactions: front ? front.assembled.reactions : [],
     };
   },
 

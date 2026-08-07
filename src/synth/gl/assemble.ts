@@ -7,21 +7,41 @@ import type {
 import type { InlineGenerator, InlineGeneratorCatalog } from '../generators/types';
 import { RNG_GLSL } from '../rng.glsl';
 import { resolvePreludes } from './preludes';
+import {
+  allowsMultiTap,
+  reactionsByIds,
+  REACTION_DRIVE_GLSL,
+  REACTION_NS_CONST,
+  reactionNamespace,
+  selectReactions,
+  topologyKey,
+  type ReactionSelection,
+} from './reactions';
 
 export const SEED_UNIFORM = 'uSeed';
 
+/** パイプライン（Operator グラフ全体）を 1 点で評価する関数の名前。 */
+export const PIPELINE_FN = 'synthPipeline';
+
 /**
- * Patch 共通のオーディオ反応の強さ。
+ * Patch 共通のオーディオ反応の**下地**。
  *
- * Generator は 106 個中 8 個しか音の uniform を読まないので、Generator 任せに
+ * Generator は 105 個中 8 個しか音の uniform を読まないので、Generator 任せに
  * すると「音に反応している感が無い Patch」が大量に出る。どんな組み合わせを
  * 引いても最低限は音に反応するように、main() の中で全 Patch 共通に効かせる。
- * 演出の主役ではなく下地なので、いずれも控えめな値にしてある。
+ *
+ * 演出の主役は {@link ./reactions} のリアクション層で、ここはその下に敷く
+ * 最低保証。座標側の 2 つの値は**動かさないこと**: Generator ごとの被覆率
+ * (`coverage.generated.ts`) はリアクション層を切った状態で測っており、この
+ * ズーム量が変わると 105 個ぶんの測定値がまとめてドリフトする。
  */
 /** 拍の頭で画面を寄せる量（0.05 = 5% ズームイン）。 */
 const PUNCH_ZOOM = 0.05;
-/** 拍の頭で色を持ち上げる量。プリマルチプライドなので軽いグローになる。 */
-const PUNCH_LIFT = 0.25;
+/**
+ * 拍の頭で色を持ち上げる量。プリマルチプライドなので軽いグローになる。
+ * リアクション層が色にも効くようになったぶん、下地としては控えめにしてある。
+ */
+const PUNCH_LIFT = 0.15;
 /** 無音時に画面を引く量（0.06 = 6% ズームアウト）。音量で息をするように見える。 */
 const ENERGY_ZOOM = 0.06;
 
@@ -74,6 +94,20 @@ export interface AssembledShader {
    * テクスチャを使わない Patch では空配列。
    */
   textures: TextureBinding[];
+  /** この Patch に載ったオーディオ・リアクションの id（座標段 → 色段の順）。 */
+  reactions: string[];
+}
+
+export interface AssembleOptions {
+  /**
+   * オーディオ・リアクション層の選び方。
+   *
+   * - `'auto'`（既定）: topology から決定的に選ぶ。実行時はこれだけを使う。
+   * - `'off'`: リアクション層を一切出力しない。Generator 単体の被覆率を測る
+   *   GPU ハーネスが使う（共通層の演出が Generator ごとの数字に混ざらないように）。
+   * - `string[]`: id を明示。テストで特定のリアクションを名指しするため。
+   */
+  reactions?: 'auto' | 'off' | readonly string[];
 }
 
 /** Role used for fn naming and main() stage ordering. */
@@ -129,6 +163,7 @@ function glslUniformType(param: ParameterDefinition): string {
 export function assemblePatch(
   patch: VisualPatch,
   catalog: InlineGeneratorCatalog,
+  opts: AssembleOptions = {},
 ): AssembledShader {
   const uniforms: AssembledShader['uniforms'] = [];
   const nsUniforms: AssembledShader['nsUniforms'] = [];
@@ -180,6 +215,22 @@ export function assemblePatch(
     }
   }
 
+  // ---- audio reaction layer ----
+  // topology だけから決める（seed は混ぜない）。assembler の「同じ topology →
+  // 同じ fragSrc」という不変条件を保つため。詳細は ./reactions の冒頭。
+  const reactionKey = topologyKey(patch.operators);
+  const reactionSpec = opts.reactions ?? 'auto';
+  const reactions: ReactionSelection =
+    reactionSpec === 'off'
+      ? { coord: [], color: [] }
+      : reactionSpec === 'auto'
+        ? selectReactions(reactionKey, {
+            allowMultiTap: allowsMultiTap(resolved.map((r) => r.def)),
+          })
+        : reactionsByIds(reactionSpec);
+  const reactionIds = [...reactions.coord, ...reactions.color].map((r) => r.id);
+  const hasReactions = reactionIds.length > 0;
+
   const lines: string[] = [];
 
   // ---- header ----
@@ -204,6 +255,11 @@ export function assemblePatch(
   lines.push('uniform float uPunch, uEnergy;');
   lines.push('uniform float uFade;');
   lines.push(`uniform uint ${SEED_UNIFORM};`);
+  if (hasReactions) {
+    // リアクション層の乱数名前空間。topology から決まる定数なので uniform に
+    // する必要がない（振れ幅は実行時の uSeed 側で出る）。
+    lines.push(`const uint ${REACTION_NS_CONST} = ${reactionNamespace(reactionKey) >>> 0}u;`);
+  }
   lines.push('');
 
   // ---- param + ns uniforms (operators array order, params in definition order) ----
@@ -269,20 +325,11 @@ export function assemblePatch(
   const valueMods = resolved.filter((r) => r.role === 'mod_value');
   const materials = resolved.filter((r) => r.role === 'material');
 
-  lines.push('void main() {');
-  lines.push('  // aspect-corrected, origin-centered coords');
-  lines.push('  vec2 uv = vUv;');
-  lines.push('  float aspect = uRes.x / uRes.y;');
-  lines.push('  vec2 p = (uv - 0.5) * vec2(aspect, 1.0);');
-  lines.push('');
-
-  lines.push('  // 0. shared audio response — every patch reacts, whatever it picked');
-  lines.push(
-    `  p *= (1.0 + ${ENERGY_ZOOM.toFixed(3)} * (1.0 - uEnergy)) * (1.0 - ${PUNCH_ZOOM.toFixed(
-      3,
-    )} * uPunch);`,
-  );
-  lines.push('');
+  // Operator グラフ全体を「1 点を評価する関数」として出す。main() から直接
+  // 書き下すのではなく関数にしてあるのは、色ズレ・残像のような multiTap
+  // リアクションが同じフレームで別の座標をもう一度評価できるようにするため。
+  lines.push('// --- pipeline: the whole operator graph, evaluated at one point ---');
+  lines.push(`vec4 ${PIPELINE_FN}(vec2 p) {`);
 
   lines.push('  // 1. coord modifiers (modifier + output:vector) in patch order');
   for (const r of coordMods) {
@@ -316,15 +363,56 @@ export function assemblePatch(
 
   lines.push('  // 5. material(s) — last wins if multiple');
   if (materials.length === 0) {
-    lines.push('  fragColor = vec4(v, v, v, v);');
+    lines.push('  vec4 col = vec4(v, v, v, v);');
   } else {
-    for (const r of materials) {
-      lines.push(`  fragColor = ${r.fnName}(v, p);`);
-    }
+    materials.forEach((r, i) => {
+      lines.push(`  ${i === 0 ? 'vec4 col' : 'col'} = ${r.fnName}(v, p);`);
+    });
   }
+  lines.push('  return col;');
+  lines.push('}');
+  lines.push('');
+
+  lines.push('void main() {');
+  lines.push('  // aspect-corrected, origin-centered coords');
+  lines.push('  vec2 uv = vUv;');
+  lines.push('  float aspect = uRes.x / uRes.y;');
+  lines.push('  vec2 p = (uv - 0.5) * vec2(aspect, 1.0);');
+  lines.push('');
+
+  lines.push('  // 0. shared audio response — every patch reacts, whatever it picked');
+  lines.push(
+    `  p *= (1.0 + ${ENERGY_ZOOM.toFixed(3)} * (1.0 - uEnergy)) * (1.0 - ${PUNCH_ZOOM.toFixed(
+      3,
+    )} * uPunch);`,
+  );
+  lines.push('');
+
+  if (hasReactions) {
+    // 駆動値は両段で共有する（main の中なので色段からも見える）。無音では
+    // すべて 0 になり、リアクション層は恒等変換に落ちる。
+    lines.push(`  // audio reactions: ${reactionIds.join(', ')}`);
+    lines.push(REACTION_DRIVE_GLSL);
+    lines.push('');
+  }
+  for (const r of reactions.coord) {
+    lines.push(`  // reaction/coord ${r.id}: ${r.label}`);
+    lines.push(r.glsl);
+  }
+  if (reactions.coord.length > 0) lines.push('');
+
+  lines.push(`  vec4 col = ${PIPELINE_FN}(p);`);
+  lines.push('');
+
+  for (const r of reactions.color) {
+    lines.push(`  // reaction/color ${r.id}: ${r.label}`);
+    lines.push(r.glsl);
+  }
+  if (reactions.color.length > 0) lines.push('');
+
   // rgb だけ持ち上げる。alpha まで触ると OBS 側で透過そのものが拍ごとに揺れる。
-  lines.push(`  fragColor.rgb *= 1.0 + ${PUNCH_LIFT.toFixed(3)} * uPunch;`);
-  lines.push('  fragColor *= uFade;');
+  lines.push(`  col.rgb *= 1.0 + ${PUNCH_LIFT.toFixed(3)} * uPunch;`);
+  lines.push('  fragColor = col * uFade;');
   lines.push('}');
   lines.push('');
 
@@ -333,5 +421,6 @@ export function assemblePatch(
     uniforms,
     nsUniforms,
     textures,
+    reactions: reactionIds,
   };
 }

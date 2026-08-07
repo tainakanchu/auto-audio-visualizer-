@@ -657,11 +657,20 @@ export async function measureFramesInBrowser(
   return { ok: true, frames: res.frames };
 }
 
+/**
+ * 測定用のアセンブル。**オーディオ・リアクション層は切る**。
+ *
+ * ハーネスは uPunch / uEnergy に 0 でない値を入れて「演奏中の 1 フレーム」を
+ * 再現するので、リアクション層を入れたままだと Patch の topology ごとに違う
+ * 演出（スライスグリッチ / 色ズレ / ネガ反転…）が乗る。被覆率の測定が求めて
+ * いるのは Generator 同士の比較なので、共通層の演出は数字から外す
+ * （coverageMeasure.ts の測定ルール 4「同じ土俵で測る」の延長）。
+ */
 function assemble(
   patch: VisualPatch,
 ): { ok: true; shader: AssembledShader } | { ok: false; log: string } {
   try {
-    return { ok: true, shader: assemblePatch(patch, inlineCatalog) };
+    return { ok: true, shader: assemblePatch(patch, inlineCatalog, { reactions: 'off' }) };
   } catch (e) {
     return {
       ok: false,
