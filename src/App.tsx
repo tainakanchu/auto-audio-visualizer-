@@ -78,7 +78,13 @@ export function App(): React.ReactElement {
       variation: variationRef.current,
     });
     renderer.setScenes(scenes);
-    renderer.setScene(settingsRef.current.sceneId);
+    if (!renderer.setScene(settingsRef.current.sceneId)) {
+      // 既定シーン（semantic-synth）は GL なので、WebGL2 が無い環境では開けない。
+      // setScenes が代わりに選んだ描けるシーンへ設定を寄せて、真っ黒な画面に
+      // ならないようにする。
+      const active = renderer.activeSceneId;
+      if (active) update({ sceneId: active });
+    }
     renderer.start();
 
     engineRef.current = engine;
@@ -91,7 +97,8 @@ export function App(): React.ReactElement {
       engineRef.current = null;
       rendererRef.current = null;
     };
-  }, []);
+    // update は useSettings が返す安定参照。マウント時に一度だけ走らせる。
+  }, [update]);
 
   // ---- Audio control ----
   const refreshDevices = useCallback(async () => {
@@ -172,7 +179,9 @@ export function App(): React.ReactElement {
   // ---- Scene selection ----
   const setScene = useCallback(
     (id: string) => {
-      rendererRef.current?.setScene(id);
+      // 開けなかったシーン（WebGL2 非対応環境の GL シーン）は設定にも残さない。
+      // 残すと「選ばれているのに描かれない」状態になる。
+      if (rendererRef.current && !rendererRef.current.setScene(id)) return;
       update({ sceneId: id });
     },
     [update],
@@ -181,9 +190,18 @@ export function App(): React.ReactElement {
   const shiftScene = useCallback(
     (delta: number) => {
       const cur = sceneIndexById(settingsRef.current.sceneId);
-      setScene(sceneByIndex(cur + delta).id);
+      // 開けないシーンは飛ばす。止まると、WebGL2 が無い環境で GL シーンに
+      // 当たった瞬間にシーン送り（とオートサイクル）が固まってしまう。
+      for (let step = 1; step <= scenes.length; step++) {
+        const next = sceneByIndex(cur + delta * step);
+        if (next.id === settingsRef.current.sceneId) break;
+        if (rendererRef.current?.setScene(next.id)) {
+          update({ sceneId: next.id });
+          return;
+        }
+      }
     },
-    [setScene],
+    [update],
   );
 
   // ---- Look gacha: reroll the seed ----

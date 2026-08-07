@@ -2,10 +2,11 @@
 
 ブラウザだけで動く、音に反応するフルスクリーン・ビジュアルツールです。マイク / ライン入力 / ループバック（デスクトップ音声）を解析し、なめらかで音楽に反応するビジュアルを描画します。OBS のブラウザソースや、プロジェクター用のフルスクリーンブラウザに常駐させて使う前提で設計しています。
 
+- **既定シーンは Semantic Synth**。seed から GLSL シェーダそのものを合成する生成シーンです（後述）
 - **Canvas 2D を手書き**で描画（three.js / p5 などの外部描画ライブラリは不使用）
 - さらに **WebGL2 による GPU シーン**（Fluid Ink / Smoke / Lava / Aurora）を追加。リッチで有機的なアンビエント映像（後述）
 - 透過背景に対応。OBS のオーバーレイとしてそのまま重ねられます
-- 10 のシーン（2D: Bars / Waveform / Particles / Radial / Rings / Lissajous、GPU: Fluid Ink / Smoke / Lava / Aurora）
+- 11 のシーン（生成: Semantic Synth、2D: Bars / Waveform / Particles / Radial / Rings / Lissajous、GPU: Fluid Ink / Smoke / Lava / Aurora）
 - **シード（look gacha）** によって全シーンの見た目が劇的に変化します（後述）
 - 設定は localStorage に保存され、URL パラメータで上書き可能
 
@@ -33,7 +34,7 @@ pnpm dev
 
 | キー | 動作 |
 | --- | --- |
-| `1` – `9`, `0` | シーンを番号で選択（`0` = 10 番目のシーン） |
+| `1` – `9`, `0` | シーンを番号で選択（`1` = Semantic Synth、`0` = 10 番目のシーン） |
 | `←` / `→` | 前 / 次のシーンへ |
 | `H` | コントロールパネルの表示 / 非表示 |
 | `F` | フルスクリーン切り替え |
@@ -80,11 +81,14 @@ pnpm dev
 - **WebGL2 が必須**です。非対応の環境では GPU シーンは**自動的に無効化**され（シーン選択でグレーアウト・`（WebGL2なし）` 表示）、2D シーンのみで動作します。コンテキストロスト時も自動復帰します。
 - 透過は 2D シーンと同様に保たれるので、OBS の透過オーバーレイにそのまま使えます。
 
-> シーンキーは GPU シーン追加に伴い **`1`〜`9`、`0`**（10 番目）に拡張されました。
+> シーンキーは **`1`〜`9`、`0`**（10 番目）です。シーンは 11 個あるので、末尾の 1 つ（Aurora）だけ数字キーの割り当てがありません。`←` / `→`・シーンピッカー・`?scene=aurora` から選べます。
 
-## Semantic Synth（生成シンセシーン・実験的）
+## Semantic Synth（生成シンセシーン・既定）
 
-固定の描画ロジックを持つ 10 シーンとは別に、**seed から GLSL シェーダそのものを合成する実験的なシーン**「Semantic Synth」を搭載しています（`?scene=semantic-synth` で起動）。
+固定の描画ロジックを持つ 10 シーンとは別に、**seed から GLSL シェーダそのものを合成するシーン**「Semantic Synth」を搭載しています。**これが既定のシーン**で、何も指定しなければ起動時に開きます（キー `1`、または `?scene=semantic-synth`）。
+
+> 既に一度使ったブラウザでは、最後に選んだシーンが localStorage に残っているのでそちらが優先されます。明示的に開くには `?scene=semantic-synth` かキー `1` を使ってください。
+> WebGL2 が使えない環境では自動的に Bars（2D）へフォールバックします。
 
 - Source / Field / Modifier / Material の 4 カテゴリ・計 100 種類の Generator の中から、seed に基づいて決定的に組み合わせを選び、GLSL を組み立てて描画します。あらかじめ用意された固定シーンではなく、**都度合成される「実験的な」シーン**です。
 - 選ばれる組み合わせは look gacha の **シードがそのまま効きます**。同じシードなら同じ Generator 構成・パラメータ・Look が常に再現されます。
@@ -134,7 +138,7 @@ pnpm dev
 
 | パラメータ | 例 | 説明 |
 | --- | --- | --- |
-| `scene` | `scene=aurora` | 起動時のシーン id（2D: `bars` `waveform` `particles` `radial` `rings` `lissajous` / GPU: `fluid` `smoke` `lava` `aurora` `semantic-synth`） |
+| `scene` | `scene=aurora` | 起動時のシーン id（既定 `semantic-synth` / 2D: `bars` `waveform` `particles` `radial` `rings` `lissajous` / GPU: `fluid` `smoke` `lava` `aurora`） |
 | `bg` | `bg=transparent` | 背景（`black` / `transparent`） |
 | `ui` | `ui=hide` | コントロールパネルを最初から非表示にする（OBS 用） |
 | `gain` | `gain=2` | 入力ゲイン（0.5 – 4） |
