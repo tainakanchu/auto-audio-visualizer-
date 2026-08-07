@@ -3,6 +3,8 @@ import { AudioEngine } from './audio/AudioEngine';
 import { Renderer } from './render/Renderer';
 import { scenes, sceneByIndex, sceneIndexById } from './scenes';
 import { initBridgeClient } from './synth/bridgeClient';
+import { getSynthControl } from './synth/control';
+import { resolveBlendMode } from './ui/blend';
 import { ControlPanel } from './ui/ControlPanel';
 import { resolveOverlaySceneId } from './ui/overlay';
 import { TimelinePanel } from './ui/TimelinePanel';
@@ -32,7 +34,7 @@ async function toggleFullscreen(): Promise<void> {
 }
 
 export function App(): React.ReactElement {
-  const { settings, update, initialUiHidden, initialOverlayRaw } = useSettings();
+  const { settings, update, initialUiHidden, initialOverlayRaw, initialBlendRaw } = useSettings();
 
   // Deterministic visual variation derived from the seed; recomputed only when
   // the seed string changes.
@@ -54,11 +56,13 @@ export function App(): React.ReactElement {
   const variationRef = useRef(variation);
   variationRef.current = variation;
 
-  // initialOverlayRaw is stable (read once inside useSettings from the URL at
-  // mount); kept in a ref so the mount effect below can read it without
-  // joining the dependency array.
+  // initialOverlayRaw / initialBlendRaw are stable (read once inside useSettings
+  // from the URL at mount); kept in refs so the mount effect below can read
+  // them without joining the dependency array.
   const initialOverlayRawRef = useRef(initialOverlayRaw);
   initialOverlayRawRef.current = initialOverlayRaw;
+  const initialBlendRawRef = useRef(initialBlendRaw);
+  initialBlendRawRef.current = initialBlendRaw;
 
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -109,6 +113,20 @@ export function App(): React.ReactElement {
       );
     }
 
+    // blend も URL 専用。不正値は normal に倒し、コンソールへ警告するだけ。
+    // control と renderer の両方に載せ、CLI からの setBlendMode は subscribe で追従。
+    const { mode: blendMode, warning: blendWarning } = resolveBlendMode(initialBlendRawRef.current);
+    if (blendWarning) {
+      console.warn(`[vj-blend] ${blendWarning}`);
+    }
+    renderer.setBlendMode(blendMode);
+    getSynthControl().setBlendMode(blendMode);
+
+    const unsubBlend = getSynthControl().subscribe(() => {
+      // Idempotent: frequent notifies (patch/timeline) are fine.
+      renderer.setBlendMode(getSynthControl().getState().blendMode);
+    });
+
     renderer.start();
 
     engineRef.current = engine;
@@ -116,6 +134,7 @@ export function App(): React.ReactElement {
     setGlAvailable(renderer.glAvailable);
 
     return () => {
+      unsubBlend();
       renderer.dispose();
       engine.stop();
       engineRef.current = null;

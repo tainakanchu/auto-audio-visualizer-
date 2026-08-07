@@ -81,21 +81,23 @@ function loadStored(): Partial<Settings> {
 
 /**
  * Result of reading URL params: setting overrides plus the `ui=hide` flag and
- * the raw `overlay` value.
+ * the raw `overlay` / `blend` values.
  *
- * `overlayRaw` is intentionally NOT part of `overrides`/`Settings`: overlay is
- * URL-only and never persisted to localStorage (see {@link UseSettingsResult}).
+ * `overlayRaw` / `blendRaw` are intentionally NOT part of `overrides`/`Settings`:
+ * they are URL-only and never persisted to localStorage (see {@link UseSettingsResult}).
  */
 interface UrlConfig {
   overrides: Partial<Settings>;
   uiHidden: boolean;
   overlayRaw: string | null;
+  blendRaw: string | null;
 }
 
 function readUrl(): UrlConfig {
   const overrides: Partial<Settings> = {};
   let uiHidden = false;
   let overlayRaw: string | null = null;
+  let blendRaw: string | null = null;
   try {
     const p = new URLSearchParams(window.location.search);
 
@@ -140,13 +142,15 @@ function readUrl(): UrlConfig {
 
     uiHidden = p.get('ui') === 'hide';
 
-    // overlay は URL 専用（永続化しない）。値の妥当性チェックは行わず、生の
-    // まま持ち出す — 検証はベースシーン id が確定する App 側で行う。
+    // overlay / blend は URL 専用（永続化しない）。値の妥当性チェックは行わず、
+    // 生のまま持ち出す — 検証は App 側（overlay はベースシーン確定後、blend は
+    // resolveBlendMode）で行う。
     overlayRaw = p.get('overlay');
+    blendRaw = p.get('blend');
   } catch {
     // Ignore malformed URL.
   }
-  return { overrides, uiHidden, overlayRaw };
+  return { overrides, uiHidden, overlayRaw, blendRaw };
 }
 
 function sanitize(s: Settings): Settings {
@@ -181,6 +185,14 @@ export interface UseSettingsResult {
    * the guarantee that "overlay 未指定時は現状と完全に同一の挙動" になる。
    */
   initialOverlayRaw: string | null;
+  /**
+   * Raw `blend` URL param value (unvalidated), or null if absent.
+   *
+   * Same URL-only policy as `initialOverlayRaw` — never part of `Settings`,
+   * never written to localStorage. Blend only has effect while an overlay is
+   * active; omitting `?blend=` must keep behaviour byte-identical to today.
+   */
+  initialBlendRaw: string | null;
 }
 
 /**
@@ -214,5 +226,6 @@ export function useSettings(): UseSettingsResult {
     update,
     initialUiHidden: url.uiHidden,
     initialOverlayRaw: url.overlayRaw,
+    initialBlendRaw: url.blendRaw,
   };
 }
