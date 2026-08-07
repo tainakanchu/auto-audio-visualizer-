@@ -1,0 +1,18 @@
+{
+  "name": "huandao-climb",
+  "mood": ["環島", "山", "遅い", "湿った"],
+  "seed": "huandao-climb-v1",
+  "tweaks": [
+    "src0:=roadStitch",
+    "+hillClimb:fld0",
+    "fld0.gears=4",
+    "fld0.meander=0.45",
+    "fld0.amount=0.3",
+    "mat0:=sunbleachedTarp",
+    "palette.hueOffset=130",
+    "palette.saturation=26",
+    "palette.lightness=44",
+    "composition.speed=0.22"
+  ],
+  "notes": "獲得標高の記憶。effortful だが速度は抑えめ（実走は遅いはず）。"
+}

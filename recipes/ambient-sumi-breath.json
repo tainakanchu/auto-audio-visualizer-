@@ -1,0 +1,17 @@
+{
+  "name": "ambient-sumi-breath",
+  "mood": ["墨", "アンビエント", "静寂", "遅い"],
+  "seed": "ambient-sumi-breath-v1",
+  "tweaks": [
+    "src0:=branch",
+    "src0.depth=4",
+    "mat0:=ink",
+    "mat0.hue=0",
+    "mat0.density=0.6",
+    "palette.mode=mono",
+    "palette.saturation=6",
+    "palette.lightness=30",
+    "composition.speed=0.07"
+  ],
+  "notes": "calligraphic 寄り。華語セットの間奏に。"
+}

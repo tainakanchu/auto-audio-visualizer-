@@ -10,6 +10,7 @@
     "bridge": "node scripts/vj-bridge.mjs",
     "vj:gen": "node scripts/vj-gen.mjs",
     "vj:tweak": "node scripts/vj-tweak.mjs",
+    "vj:recipe": "node scripts/vj-recipe.mjs",
     "measure:coverage": "node scripts/measure-coverage.mjs",
     "lint": "oxlint --type-aware",
     "lint:fix": "oxlint --type-aware --fix",

@@ -1,0 +1,20 @@
+{
+  "name": "rnb-late-intimate",
+  "mood": ["R&B", "チル", "夜", "甘さ"],
+  "seed": "rnb-late-intimate-v1",
+  "tweaks": [
+    "src0:=concentric",
+    "src0.count=6",
+    "src0.wobble=0.2",
+    "fld0:=sway",
+    "fld0.amount=0.18",
+    "mat0:=nicotineCeiling",
+    "mat0.stain=0.45",
+    "mat0.intensity=0.4",
+    "palette.hueOffset=300",
+    "palette.saturation=34",
+    "palette.lightness=30",
+    "composition.speed=0.2"
+  ],
+  "notes": "クラブというよりバーの R&B。天井ヤニ感で生活夜を足す。"
+}

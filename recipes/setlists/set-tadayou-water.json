@@ -1,0 +1,60 @@
+{
+  "id": "set-tadayou-water",
+  "title": "漂ウ 水テーマ 30min（オープン枠）",
+  "context": "大阪 bar_fader / 揺れようね。昼〜夕方",
+  "energyArc": [0.12, 0.2, 0.35, 0.5, 0.38, 0.22],
+  "durationMin": 30,
+  "ground": {
+    "role": "地 — 水の長周期",
+    "cycleMin": 8,
+    "sequence": [
+      {
+        "tMin": 0,
+        "recipe": "tadayou-open",
+        "transition": "slow"
+      },
+      {
+        "tMin": 10,
+        "recipe": "summer-coast-refresh",
+        "transition": "slow"
+      },
+      {
+        "tMin": 18,
+        "recipe": "tadayou-sway-floor",
+        "transition": "slow"
+      },
+      {
+        "tMin": 26,
+        "recipe": "ambient-harbor-black",
+        "transition": "slow"
+      }
+    ]
+  },
+  "figure": {
+    "role": "図 — カーテン揺れ・湿気レンズ（短周期）",
+    "cycleMin": 1.5,
+    "sequence": [
+      {
+        "tMin": 3,
+        "recipe": "night-market-curtain"
+      },
+      {
+        "tMin": 8,
+        "recipe": "andor-floaty-stage"
+      },
+      {
+        "tMin": 14,
+        "recipe": "break-humidity-hold"
+      },
+      {
+        "tMin": 20,
+        "recipe": "mandopop-soft-pink"
+      },
+      {
+        "tMin": 24,
+        "recipe": "dawn-afterhours-road"
+      }
+    ]
+  },
+  "notes": "composition.speed は地 0.08–0.12、図だけ 0.16–0.22。ビートで殴らない。"
+}

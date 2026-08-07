@@ -1,0 +1,18 @@
+{
+  "name": "tadayou-sway-floor",
+  "mood": ["漂う", "チル", "湿った", "夜"],
+  "seed": "tadayou-sway-floor-v1",
+  "tweaks": [
+    "src0:=nightMarketCurtain",
+    "fld0:=sway",
+    "fld0.freq=0.5",
+    "fld0.speed=0.15",
+    "fld0.amount=0.4",
+    "mat0:=sodium",
+    "mat0.haze=0.6",
+    "palette.lightness=22",
+    "palette.saturation=30",
+    "composition.speed=0.12"
+  ],
+  "notes": "「揺れようね」の字義通り。図（カーテン揺れ）を長周期で。"
+}

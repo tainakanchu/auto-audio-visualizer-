@@ -1,0 +1,65 @@
+{
+  "id": "set-asian-syndrome",
+  "title": "アジアンシンドローム 30min",
+  "context": "四谷 DOCTOR HEAD・アジア音楽の夜",
+  "energyArc": [0.25, 0.4, 0.55, 0.7, 0.5, 0.3],
+  "durationMin": 30,
+  "ground": {
+    "role": "地 — 台湾街並みの骨格",
+    "cycleMin": 5,
+    "sequence": [
+      {
+        "tMin": 0,
+        "recipe": "humid-qilou-night",
+        "transition": "slow"
+      },
+      {
+        "tMin": 6,
+        "recipe": "grille-afternoon",
+        "transition": "slow"
+      },
+      {
+        "tMin": 12,
+        "recipe": "asian-syndrome-groove",
+        "transition": "slow"
+      },
+      {
+        "tMin": 18,
+        "recipe": "scooter-slip-humid",
+        "transition": "default"
+      },
+      {
+        "tMin": 24,
+        "recipe": "sodium-wet-road",
+        "transition": "slow"
+      }
+    ]
+  },
+  "figure": {
+    "role": "図 — 電飾・花布・祝祭（中周期）",
+    "cycleMin": 2.5,
+    "sequence": [
+      {
+        "tMin": 4,
+        "recipe": "bus-jacquard-day"
+      },
+      {
+        "tMin": 9,
+        "recipe": "taidong-market-dusk"
+      },
+      {
+        "tMin": 15,
+        "recipe": "peak-temple-led"
+      },
+      {
+        "tMin": 21,
+        "recipe": "rnb-karaoke-after"
+      },
+      {
+        "tMin": 27,
+        "recipe": "break-humidity-hold"
+      }
+    ]
+  },
+  "notes": "地は qilou/grille/道路。図で LED・廟・カラオケ。ピークは 1 回だけ。"
+}

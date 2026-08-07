@@ -1,0 +1,18 @@
+{
+  "name": "mandopop-soft-pink",
+  "mood": ["華語", "甘さ", "チル", "柔らかい"],
+  "seed": "mandopop-soft-pink-v1",
+  "tweaks": [
+    "src0:=petals",
+    "fld0:=sway",
+    "fld0.amount=0.2",
+    "mat0:=ink",
+    "mat0.hue=330",
+    "mat0.density=0.35",
+    "palette.hueOffset=330",
+    "palette.saturation=32",
+    "palette.lightness=52",
+    "composition.speed=0.18"
+  ],
+  "notes": "甜約翰 / MANDARK 帯。派手にせず甘い。彩度は 35 超えない。"
+}

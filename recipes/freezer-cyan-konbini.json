@@ -1,0 +1,19 @@
+{
+  "name": "freezer-cyan-konbini",
+  "mood": ["コンビニ", "蛍光灯", "生活夜", "チル"],
+  "seed": "freezer-cyan-konbini-v1",
+  "tweaks": [
+    "src0:=fanGuard",
+    "src0.spokes=12",
+    "src0.spin=0.08",
+    "mat0:=freezerCyan",
+    "mat0.frost=0.55",
+    "mat0.hum=0.35",
+    "mat0.intensity=0.5",
+    "palette.hueOffset=185",
+    "palette.saturation=28",
+    "palette.lightness=52",
+    "composition.speed=0.12"
+  ],
+  "notes": "深夜コンビニの冷ケース。お茶会のブレイク・MC 中向き。"
+}

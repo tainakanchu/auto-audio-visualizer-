@@ -1,0 +1,16 @@
+{
+  "name": "break-humidity-hold",
+  "mood": ["ブレイク", "湿気", "暗い", "静か"],
+  "seed": "break-humidity-hold-v1",
+  "tweaks": [
+    "src0:=qilouShutter",
+    "src0.openness=0.15",
+    "fld0:=humidityLens",
+    "fld0.amount=0.4",
+    "mat0:=wetConcrete",
+    "palette.lightness=18",
+    "palette.saturation=20",
+    "composition.speed=0.08"
+  ],
+  "notes": "音が落ちたとき絵も消さない。openness を閉じて密度を保つ。"
+}

@@ -1,0 +1,16 @@
+{
+  "name": "summer-coast-refresh",
+  "mood": ["夏", "さわやか", "港", "青"],
+  "seed": "summer-coast-refresh-v1",
+  "tweaks": [
+    "src0:=seigaiha",
+    "fld0:=harborBackwash",
+    "fld0.period=6",
+    "mat0:=seaSalt",
+    "palette.hueOffset=175",
+    "palette.saturation=28",
+    "palette.lightness=64",
+    "composition.speed=0.22"
+  ],
+  "notes": "環島の海岸・回帰線。昼の漂ウ前半。"
+}

@@ -118,11 +118,11 @@ function rand(seed, namespace, index) {
 
 const CURRENT_SCHEMA_VERSION = 1; // src/synth/schema.ts
 
-const PALETTE_MODES = ['mono', 'analogous', 'complementary', 'triadic', 'rainbow'];
+export const PALETTE_MODES = ['mono', 'analogous', 'complementary', 'triadic', 'rainbow'];
 
-const CATEGORY_RANK = { source: 0, field: 1, modifier: 2, material: 3 };
+export const CATEGORY_RANK = { source: 0, field: 1, modifier: 2, material: 3 };
 
-const COUNT_LIMITS = {
+export const COUNT_LIMITS = {
   source: { min: 1, max: 2 },
   field: { min: 0, max: 2 },
   modifier: { min: 1, max: 3 },
@@ -870,7 +870,7 @@ function validateParamValueLocal(paramDef, value, path) {
   return issues;
 }
 
-function validatePatchLocal(patch, catalogArray) {
+export function validatePatchLocal(patch, catalogArray) {
   const issues = [];
   const catalogMap = new Map(catalogArray.map((d) => [d.id, d]));
   const operators = patch.operators;
@@ -1204,4 +1204,6 @@ function main() {
   }
 }
 
-main();
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main();
+}

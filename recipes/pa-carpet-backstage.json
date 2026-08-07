@@ -1,0 +1,17 @@
+{
+  "name": "pa-carpet-backstage",
+  "mood": ["PA", "開場前", "低彩度", "硬い"],
+  "seed": "pa-carpet-backstage-v1",
+  "tweaks": [
+    "src0:=grid",
+    "src0.cells=8",
+    "mat0:=paCarpet",
+    "mat0.fiber=0.55",
+    "mat0.wear=0.6",
+    "mat0.dust=0.4",
+    "palette.saturation=12",
+    "palette.lightness=28",
+    "composition.speed=0.1"
+  ],
+  "notes": "現場の床。即物的で「機材感」。美的傾向の PA 条項直球。"
+}

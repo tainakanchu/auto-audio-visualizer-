@@ -1,0 +1,19 @@
+{
+  "name": "minidv-faded-memory",
+  "mood": ["MiniDV", "懐かしい", "ふわふわ", "低彩度"],
+  "seed": "minidv-faded-memory-v1",
+  "tweaks": [
+    "src0:=points",
+    "mat0:=minidvFade",
+    "mat0.age=0.65",
+    "mat0.chromaNoise=0.35",
+    "mat0.awbDrift=0.4",
+    "mod0:=grain",
+    "mod0.amount=0.25",
+    "mod0.size=1.2",
+    "palette.saturation=28",
+    "palette.lightness=50",
+    "composition.speed=0.15"
+  ],
+  "notes": "2000s 家庭用カメラ。Andr の「ふわふわ」寄りの記憶映像。"
+}

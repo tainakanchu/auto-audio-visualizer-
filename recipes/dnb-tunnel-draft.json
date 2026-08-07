@@ -1,0 +1,18 @@
+{
+  "name": "dnb-tunnel-draft",
+  "mood": ["ドラムンベース", "攻めた", "速い", "暗い"],
+  "seed": "dnb-tunnel-draft-v1",
+  "tweaks": [
+    "src0:=sdfTunnel",
+    "+tunnelDraft:fld0",
+    "fld0.pull=0.55",
+    "fld0.escape=0.4",
+    "fld0.amount=0.35",
+    "mat0:=cheapLed",
+    "mat0.dropout=0.2",
+    "palette.saturation=40",
+    "palette.lightness=24",
+    "composition.speed=0.9"
+  ],
+  "notes": "DnB 用の例外的ハイ energy。ただし flash 連打はせず tunnel の推進で勝負。X 上は自己ジャンル未確認。"
+}

@@ -1,0 +1,65 @@
+{
+  "id": "set-hard-house-bar",
+  "title": "硬派ハウス寄りバー 30min",
+  "context": "ジャンルは現場需要ベース（X 自己規定は未確認）",
+  "energyArc": [0.3, 0.45, 0.6, 0.75, 0.55, 0.35],
+  "durationMin": 30,
+  "ground": {
+    "role": "地 — インフラ骨格（長周期）",
+    "cycleMin": 7,
+    "sequence": [
+      {
+        "tMin": 0,
+        "recipe": "pa-carpet-backstage",
+        "transition": "slow"
+      },
+      {
+        "tMin": 5,
+        "recipe": "hard-house-viaduct",
+        "transition": "slow"
+      },
+      {
+        "tMin": 12,
+        "recipe": "hard-house-skeleton",
+        "transition": "default"
+      },
+      {
+        "tMin": 20,
+        "recipe": "shanghai-edge-prep",
+        "transition": "slow"
+      },
+      {
+        "tMin": 26,
+        "recipe": "hard-house-viaduct",
+        "transition": "slow"
+      }
+    ]
+  },
+  "figure": {
+    "role": "図 — 湿気・ナトリウム（別周期）",
+    "cycleMin": 2,
+    "sequence": [
+      {
+        "tMin": 3,
+        "recipe": "sodium-wet-road"
+      },
+      {
+        "tMin": 8,
+        "recipe": "break-humidity-hold"
+      },
+      {
+        "tMin": 14,
+        "recipe": "typhoon-edge"
+      },
+      {
+        "tMin": 18,
+        "recipe": "peak-temple-led"
+      },
+      {
+        "tMin": 23,
+        "recipe": "crt-broadcast-ghost"
+      }
+    ]
+  },
+  "notes": "地は常に低彩度。図の typhoon/peak だけ短く刺す。flash 禁止。"
+}

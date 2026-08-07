@@ -1,0 +1,65 @@
+{
+  "id": "set-buffet-ocha",
+  "title": "BUFFFFFFFET お茶会 30min",
+  "context": "渋谷OTO規模・オールジャンル・食事あり。X 実イベント準拠",
+  "energyArc": [0.15, 0.3, 0.45, 0.55, 0.4, 0.25],
+  "durationMin": 30,
+  "ground": {
+    "role": "地 — 会場の空気を固定",
+    "cycleMin": 6,
+    "sequence": [
+      {
+        "tMin": 0,
+        "recipe": "doors-pre-silence",
+        "transition": "slow"
+      },
+      {
+        "tMin": 4,
+        "recipe": "buffet-tea-afternoon",
+        "transition": "slow"
+      },
+      {
+        "tMin": 12,
+        "recipe": "bus-jacquard-day",
+        "transition": "slow"
+      },
+      {
+        "tMin": 20,
+        "recipe": "grille-afternoon",
+        "transition": "slow"
+      },
+      {
+        "tMin": 26,
+        "recipe": "fluorescent-domestic",
+        "transition": "slow"
+      }
+    ]
+  },
+  "figure": {
+    "role": "図 — 会話の間・曲間で軽く差し替え",
+    "cycleMin": 2,
+    "sequence": [
+      {
+        "tMin": 6,
+        "recipe": "minidv-faded-memory"
+      },
+      {
+        "tMin": 10,
+        "recipe": "mandopop-soft-pink"
+      },
+      {
+        "tMin": 16,
+        "recipe": "buffet-curry-chaos"
+      },
+      {
+        "tMin": 22,
+        "recipe": "rnb-late-intimate"
+      },
+      {
+        "tMin": 28,
+        "recipe": "break-humidity-hold"
+      }
+    ]
+  },
+  "notes": "地は生活・花布・格子。図だけ華語/R&B/kitsch。peak を作らない（お茶会）。"
+}

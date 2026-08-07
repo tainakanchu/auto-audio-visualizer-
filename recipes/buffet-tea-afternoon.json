@@ -1,0 +1,16 @@
+{
+  "name": "buffet-tea-afternoon",
+  "mood": ["お茶会", "さわやか", "生活感", "明るい"],
+  "seed": "buffet-tea-afternoon-v1",
+  "tweaks": [
+    "src0:=asanoha",
+    "mat0:=fluorescent",
+    "mat0.intensity=0.35",
+    "mat0.flicker=0.05",
+    "palette.hueOffset=40",
+    "palette.saturation=30",
+    "palette.lightness=62",
+    "composition.speed=0.22"
+  ],
+  "notes": "BUFFFFFFFET 開場〜お茶タイム。和柄は japan タグだが「お茶会」の生活感に寄せる。"
+}

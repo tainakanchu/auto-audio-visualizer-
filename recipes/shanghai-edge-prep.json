@@ -1,0 +1,17 @@
+{
+  "name": "shanghai-edge-prep",
+  "mood": ["アジア", "夜", "インフラ", "湿った"],
+  "seed": "shanghai-edge-prep-v1",
+  "tweaks": [
+    "src0:=flyoverBeams",
+    "fld0:=crossingParallax",
+    "fld0.layers=4",
+    "mat0:=sodium",
+    "mat0.haze=0.5",
+    "palette.hueOffset=15",
+    "palette.saturation=30",
+    "palette.lightness=24",
+    "composition.speed=0.3"
+  ],
+  "notes": "上海行く前の都市夜。taiwan-streetscape 固定ではなく metropolitan 寄り。"
+}

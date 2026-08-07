@@ -30,8 +30,8 @@ const CATALOG_CACHE_PATH = `${import.meta.dirname}/.vj-catalog-cache.json`;
 // 由来: src/synth/validate.ts の CATEGORY_RANK / COUNT_LIMITS をそのまま複製したもの
 // （CLI は .ts を import できないため）。サーバ側のゲートと食い違えると
 // 「ローカルは通ったのにサーバで弾かれる」が起きるので、値は必ず一致させること。
-const CATEGORY_RANK = { source: 0, field: 1, modifier: 2, material: 3 };
-const COUNT_LIMITS = {
+export const CATEGORY_RANK = { source: 0, field: 1, modifier: 2, material: 3 };
+export const COUNT_LIMITS = {
   source: { min: 1, max: 2 },
   field: { min: 0, max: 2 },
   modifier: { min: 1, max: 3 },
@@ -39,12 +39,12 @@ const COUNT_LIMITS = {
 };
 
 /** 由来: src/synth/derive.ts の pickOperatorsForCategory が使う id 命名規則（`${prefix}${n}`）。 */
-const CATEGORY_PREFIX = { source: 'src', field: 'fld', modifier: 'mod', material: 'mat' };
+export const CATEGORY_PREFIX = { source: 'src', field: 'fld', modifier: 'mod', material: 'mat' };
 
-const PALETTE_MODES = ['mono', 'analogous', 'complementary', 'triadic', 'rainbow'];
-const PALETTE_KEYS = ['mode', 'hueOffset', 'saturation', 'lightness'];
-const COMPOSITION_KEYS = ['symmetry', 'scale', 'speed'];
-const QUALITY_TIERS = ['low', 'medium', 'high'];
+export const PALETTE_MODES = ['mono', 'analogous', 'complementary', 'triadic', 'rainbow'];
+export const PALETTE_KEYS = ['mode', 'hueOffset', 'saturation', 'lightness'];
+export const COMPOSITION_KEYS = ['symmetry', 'scale', 'speed'];
+export const QUALITY_TIERS = ['low', 'medium', 'high'];
 
 const USAGE = `使い方: node vj-tweak.mjs [--url <ws(s)://…>] [--dry-run] [--seed <s>] [--refresh-catalog] <change>...
        node vj-tweak.mjs --help
@@ -124,7 +124,7 @@ function parseArgv(argv) {
  * <change> の右辺値を number → boolean → string の順で緩く解釈する。
  * `Number('')` が `0` になってしまうため、空文字だけは先に弾いて string 側に落とす。
  */
-function parseValue(raw) {
+export function parseValue(raw) {
   if (raw.trim() !== '' && Number.isFinite(Number(raw))) return Number(raw);
   if (raw === 'true') return true;
   if (raw === 'false') return false;
@@ -203,7 +203,7 @@ function loadCatalog(url, refreshCache) {
  * 形式に合わないものは `{ error }` を返す（例外にはしない — 複数トークンの
  * エラーを一括で集めたいので、classify も apply も「投げずに返す」で統一する）。
  */
-function classifyChange(raw) {
+export function classifyChange(raw) {
   if (raw.startsWith('-') && !raw.startsWith('--')) {
     return { kind: 'delete', opId: raw.slice(1) };
   }
@@ -249,7 +249,7 @@ function classifyChange(raw) {
 // 変更の適用
 // ---------------------------------------------------------------------------
 
-function existingIdsText(draft) {
+export function existingIdsText(draft) {
   return draft.operators.length > 0 ? draft.operators.map((op) => op.id).join(', ') : '(none)';
 }
 
@@ -257,7 +257,7 @@ function existingIdsText(draft) {
  * "<opId>.<paramId>" を分解する。dot が無い/先頭/末尾にある/2個以上あるものは null。
  * 由来: src/synth/validate.ts の parseTarget と同じ判定(vj-gen.mjs にも同じものがある)。
  */
-function parseTarget(target) {
+export function parseTarget(target) {
   if (typeof target !== 'string') return null;
   const dot = target.indexOf('.');
   if (dot <= 0 || dot === target.length - 1) return null;
@@ -293,7 +293,7 @@ function validateParamValue(param, value) {
   return null;
 }
 
-function applyParam(raw, change, draft, catalogMap, errors) {
+export function applyParam(raw, change, draft, catalogMap, errors) {
   const { opId, paramId, rawValue } = change;
   const op = draft.operators.find((o) => o.id === opId);
   if (!op) {
@@ -327,7 +327,7 @@ function applyParam(raw, change, draft, catalogMap, errors) {
   op.parameters[paramId] = value;
 }
 
-function applyPalette(raw, change, draft, errors) {
+export function applyPalette(raw, change, draft, errors) {
   const { subkey, rawValue } = change;
   if (!PALETTE_KEYS.includes(subkey)) {
     errors.push(`[${raw}] palette のキーは ${PALETTE_KEYS.join(' | ')} のいずれかです`);
@@ -348,7 +348,7 @@ function applyPalette(raw, change, draft, errors) {
   draft.palette[subkey] = value;
 }
 
-function applyComposition(raw, change, draft, errors) {
+export function applyComposition(raw, change, draft, errors) {
   const { subkey, rawValue } = change;
   if (!COMPOSITION_KEYS.includes(subkey)) {
     errors.push(`[${raw}] composition のキーは ${COMPOSITION_KEYS.join(' | ')} のいずれかです`);
@@ -362,7 +362,7 @@ function applyComposition(raw, change, draft, errors) {
   draft.composition[subkey] = value;
 }
 
-function applyQualityTier(raw, change, draft, errors) {
+export function applyQualityTier(raw, change, draft, errors) {
   const value = parseValue(change.rawValue);
   if (typeof value !== 'string' || !QUALITY_TIERS.includes(value)) {
     errors.push(
@@ -373,7 +373,7 @@ function applyQualityTier(raw, change, draft, errors) {
   draft.qualityTier = value;
 }
 
-function applySwap(raw, change, draft, catalogMap, errors) {
+export function applySwap(raw, change, draft, catalogMap, errors) {
   const { opId, generatorId } = change;
   const op = draft.operators.find((o) => o.id === opId);
   if (!op) {
@@ -393,7 +393,7 @@ function applySwap(raw, change, draft, catalogMap, errors) {
   op.parameters = Object.fromEntries(def.parameters.map((p) => [p.id, p.default]));
 }
 
-function applyDelete(raw, change, draft, currentIds, errors) {
+export function applyDelete(raw, change, draft, currentIds, errors) {
   const { opId } = change;
   const idx = draft.operators.findIndex((o) => o.id === opId);
   if (idx === -1) {
@@ -414,7 +414,7 @@ function applyDelete(raw, change, draft, currentIds, errors) {
   currentIds.delete(opId);
 }
 
-function applyAdd(raw, change, draft, currentIds, catalogMap, errors) {
+export function applyAdd(raw, change, draft, currentIds, catalogMap, errors) {
   const { generatorId } = change;
   let { opId } = change;
   const def = catalogMap.get(generatorId);
@@ -459,7 +459,7 @@ function applyAdd(raw, change, draft, currentIds, catalogMap, errors) {
   currentIds.add(opId);
 }
 
-function applyChange(raw, change, draft, currentIds, catalogMap, errors) {
+export function applyChange(raw, change, draft, currentIds, catalogMap, errors) {
   switch (change.kind) {
     case 'delete':
       return applyDelete(raw, change, draft, currentIds, errors);
@@ -486,7 +486,7 @@ function applyChange(raw, change, draft, currentIds, catalogMap, errors) {
 // target または source に持つ route を落とす(黙って消さない: 必ず stderr に警告)。
 // ---------------------------------------------------------------------------
 
-function routeSummary(route) {
+export function routeSummary(route) {
   return `${route.source} -> ${route.target}`;
 }
 
@@ -497,7 +497,7 @@ function routeSummary(route) {
  * 理由つきで stderr に警告する。既知の不具合対応: `<opId>:=<generatorId>`(swap)や
  * `-<opId>`(delete)の後に、古い route が検証ゲートまで残ってしまう問題を防ぐ。
  */
-function reconcileRoutes(draft, catalogMap) {
+export function reconcileRoutes(draft, catalogMap) {
   const opById = new Map(draft.operators.map((op) => [op.id, op]));
   const dropped = [];
 
@@ -549,7 +549,7 @@ function reconcileRoutes(draft, catalogMap) {
  * 由来: src/synth/validate.ts のステージ本数チェック / palette.mode チェックをローカルに
  * 複製したもの。個々のトークンとは無関係に、送る draft 全体に対して毎回走らせる。
  */
-function runPatchLevelChecks(draft, catalogMap, errors) {
+export function runPatchLevelChecks(draft, catalogMap, errors) {
   for (const [category, limits] of Object.entries(COUNT_LIMITS)) {
     const ids = draft.operators
       .filter((op) => catalogMap.get(op.generatorId)?.category === category)
@@ -695,4 +695,6 @@ function main() {
   }
 }
 
-main();
+if (import.meta.url === `file://${process.argv[1]}`) {
+  main();
+}

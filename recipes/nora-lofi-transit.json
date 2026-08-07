@@ -1,0 +1,17 @@
+{
+  "name": "nora-lofi-transit",
+  "mood": ["野良", "アジア", "生活感", "低彩度"],
+  "seed": "nora-lofi-transit-v1",
+  "tweaks": [
+    "src0:=barcode",
+    "fld0:=tapeWow",
+    "fld0.wow=0.25",
+    "fld0.flutter=0.15",
+    "fld0.amount=0.2",
+    "mat0:=minidvFade",
+    "palette.saturation=22",
+    "palette.lightness=40",
+    "composition.speed=0.24"
+  ],
+  "notes": "固定箱のない野良 DJ の移動感。lo-fi だが glitch 全開にしない。"
+}

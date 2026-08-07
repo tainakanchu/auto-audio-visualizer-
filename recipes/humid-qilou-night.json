@@ -1,0 +1,26 @@
+{
+  "name": "humid-qilou-night",
+  "mood": ["台湾", "夜", "湿った", "騎楼"],
+  "seed": "humid-qilou-night-v1",
+  "tweaks": [
+    "src0:=qilouShutter",
+    "src0.density=28",
+    "src0.openness=0.28",
+    "src0.wear=0.65",
+    "+humidityLens:fld0",
+    "fld0.blobs=3",
+    "fld0.refraction=0.55",
+    "fld0.amount=0.22",
+    "mat0:=sodium",
+    "mat0.intensity=0.55",
+    "mat0.haze=0.8",
+    "palette.mode=analogous",
+    "palette.hueOffset=32",
+    "palette.saturation=28",
+    "palette.lightness=16",
+    "composition.speed=0.18",
+    "mod0:=gamma",
+    "mod0.curve=1.65"
+  ],
+  "notes": "夜市の手前の騎楼。gamma は crush 側（>1）に振らないと街灯で白飛びしやすい。X の台東夜市集・環島夜道の記憶向け。"
+}

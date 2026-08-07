@@ -1,0 +1,20 @@
+{
+  "name": "tadayou-open",
+  "mood": ["漂う", "ふわふわ", "アンビエント", "青"],
+  "seed": "tadayou-open-v1",
+  "tweaks": [
+    "src0:=mooringRope",
+    "src0.strands=5",
+    "src0.twist=1.2",
+    "fld0:=harborBackwash",
+    "fld0.period=8",
+    "fld0.amount=0.28",
+    "mat0:=wetConcrete",
+    "mat0.hue=200",
+    "palette.hueOffset=200",
+    "palette.saturation=24",
+    "palette.lightness=48",
+    "composition.speed=0.1"
+  ],
+  "notes": "【漂ウ】オープン枠。水テーマ直球。speed は 0.1 固定推奨。"
+}

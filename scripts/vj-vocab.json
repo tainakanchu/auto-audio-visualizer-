@@ -6,8 +6,14 @@
       "motion": ["drift", "turbulent", "wave"],
       "material": ["fluid"]
     },
-    "composition": { "symmetry": 1, "speed": 0.18 },
-    "palette": { "saturation": 26, "lightness": 76 },
+    "composition": {
+      "symmetry": 1,
+      "speed": 0.18
+    },
+    "palette": {
+      "saturation": 26,
+      "lightness": 76
+    },
     "energy": 0.2
   },
   "静寂": {
@@ -16,8 +22,13 @@
       "affect": ["quiet", "calm", "meditative", "restrained"],
       "motion": ["static", "breath"]
     },
-    "composition": { "speed": 0.08 },
-    "palette": { "saturation": 16, "lightness": 42 },
+    "composition": {
+      "speed": 0.08
+    },
+    "palette": {
+      "saturation": 16,
+      "lightness": 42
+    },
     "energy": 0.12
   },
   "幾何学": {
@@ -26,7 +37,9 @@
       "affect": ["structured", "geometric", "symmetrical"],
       "material": ["geometric", "hard-edge", "lattice", "line"]
     },
-    "composition": { "symmetry": 4 },
+    "composition": {
+      "symmetry": 4
+    },
     "energy": 0.5
   },
   "抽象": {
@@ -39,40 +52,78 @@
   },
   "明るい": {
     "aliases": ["bright", "あかるい"],
-    "tags": { "affect": ["energetic", "playful", "festive"] },
-    "palette": { "lightness": 78, "saturation": 55 },
+    "tags": {
+      "affect": ["energetic", "playful", "festive"]
+    },
+    "palette": {
+      "lightness": 78,
+      "saturation": 55
+    },
     "energy": 0.55
   },
   "暗い": {
     "aliases": ["dark", "くらい"],
-    "tags": { "affect": ["ominous", "murky", "cold", "eerie"], "environment": ["urban-night"] },
-    "palette": { "lightness": 18, "saturation": 30 },
+    "tags": {
+      "affect": ["ominous", "murky", "cold", "eerie"],
+      "environment": ["urban-night"]
+    },
+    "palette": {
+      "lightness": 18,
+      "saturation": 30
+    },
     "energy": 0.35
   },
   "青": {
     "aliases": ["blue", "あお"],
-    "tags": { "affect": ["cold"], "environment": ["coastal"] },
-    "palette": { "hueOffset": 212 }
+    "tags": {
+      "affect": ["cold"],
+      "environment": ["coastal"]
+    },
+    "palette": {
+      "hueOffset": 212
+    }
   },
   "赤": {
     "aliases": ["red", "あか"],
-    "tags": { "affect": ["dramatic"], "material": ["neon"] },
-    "palette": { "hueOffset": 355 }
+    "tags": {
+      "affect": ["dramatic"],
+      "material": ["neon"]
+    },
+    "palette": {
+      "hueOffset": 355
+    }
   },
   "緑": {
     "aliases": ["green", "みどり"],
-    "tags": { "affect": ["organic"], "environment": ["botanical", "terrain"] },
-    "palette": { "hueOffset": 130 }
+    "tags": {
+      "affect": ["organic"],
+      "environment": ["botanical", "terrain"]
+    },
+    "palette": {
+      "hueOffset": 130
+    }
   },
   "黄": {
     "aliases": ["yellow", "きいろ"],
-    "tags": { "affect": ["playful", "festive"], "material": ["gold-leaf"] },
-    "palette": { "hueOffset": 50 }
+    "tags": {
+      "affect": ["playful", "festive"],
+      "material": ["gold-leaf"]
+    },
+    "palette": {
+      "hueOffset": 50
+    }
   },
   "湿った": {
     "aliases": ["humid", "wet", "しめった"],
-    "tags": { "affect": ["humid", "wet", "murky"], "material": ["fluid"], "motion": ["drift"] },
-    "palette": { "saturation": 24, "lightness": 45 },
+    "tags": {
+      "affect": ["humid", "wet", "murky"],
+      "material": ["fluid"],
+      "motion": ["drift"]
+    },
+    "palette": {
+      "saturation": 24,
+      "lightness": 45
+    },
     "energy": 0.3
   },
   "懐かしい": {
@@ -81,7 +132,10 @@
       "affect": ["nostalgic", "faded", "aged", "wistful"],
       "material": ["film", "tape", "cassette"]
     },
-    "palette": { "saturation": 28, "lightness": 55 },
+    "palette": {
+      "saturation": 28,
+      "lightness": 55
+    },
     "energy": 0.3
   },
   "台湾": {
@@ -100,7 +154,10 @@
       "affect": ["nocturnal", "quiet", "electric"],
       "motion": ["flicker"]
     },
-    "palette": { "lightness": 20, "saturation": 35 },
+    "palette": {
+      "lightness": 20,
+      "saturation": 35
+    },
     "energy": 0.4
   },
   "攻めた": {
@@ -109,13 +166,20 @@
       "affect": ["harsh", "abrasive", "chaotic", "restless", "tense", "propulsive"],
       "motion": ["glitch", "turbulent", "pulse"]
     },
-    "composition": { "speed": 1.1 },
+    "composition": {
+      "speed": 1.1
+    },
     "energy": 0.85
   },
   "静か": {
     "aliases": ["quiet", "しずか"],
-    "tags": { "affect": ["quiet", "calm", "restrained"], "motion": ["breath", "static"] },
-    "composition": { "speed": 0.1 },
+    "tags": {
+      "affect": ["quiet", "calm", "restrained"],
+      "motion": ["breath", "static"]
+    },
+    "composition": {
+      "speed": 0.1
+    },
     "energy": 0.15
   },
   "硬い": {
@@ -124,7 +188,9 @@
       "affect": ["structured", "brutalist", "industrial"],
       "material": ["hard-edge", "iron", "galvanized-steel"]
     },
-    "composition": { "symmetry": 3 },
+    "composition": {
+      "symmetry": 3
+    },
     "energy": 0.5
   },
   "派手": {
@@ -133,7 +199,9 @@
       "affect": ["festive", "dramatic", "kitsch", "iridescent"],
       "material": ["neon", "gold-leaf"]
     },
-    "palette": { "saturation": 70 },
+    "palette": {
+      "saturation": 70
+    },
     "energy": 0.7
   },
   "生活感": {
@@ -142,25 +210,791 @@
       "affect": ["mundane", "personal", "cheap", "imperfect"],
       "environment": ["domestic", "suburban"]
     },
-    "palette": { "saturation": 22 },
+    "palette": {
+      "saturation": 22
+    },
     "energy": 0.3
   },
   "速い": {
     "aliases": ["fast", "quick", "はやい"],
-    "tags": { "affect": ["kinetic", "propulsive", "restless"], "motion": ["scan", "pulse"] },
-    "composition": { "speed": 1.0 },
+    "tags": {
+      "affect": ["kinetic", "propulsive", "restless"],
+      "motion": ["scan", "pulse"]
+    },
+    "composition": {
+      "speed": 1
+    },
     "energy": 0.75
   },
   "遅い": {
     "aliases": ["slow", "おそい"],
-    "tags": { "affect": ["slow", "meditative", "calm"], "motion": ["drift", "sway", "breath"] },
-    "composition": { "speed": 0.1 },
+    "tags": {
+      "affect": ["slow", "meditative", "calm"],
+      "motion": ["drift", "sway", "breath"]
+    },
+    "composition": {
+      "speed": 0.1
+    },
     "energy": 0.15
   },
   "柔らかい": {
     "aliases": ["soft", "gentle", "やわらかい"],
-    "tags": { "affect": ["soft", "delicate", "tender"], "material": ["fluid", "organic"] },
-    "palette": { "saturation": 25, "lightness": 65 },
+    "tags": {
+      "affect": ["soft", "delicate", "tender"],
+      "material": ["fluid", "organic"]
+    },
+    "palette": {
+      "saturation": 25,
+      "lightness": 65
+    },
     "energy": 0.25
+  },
+  "アジア": {
+    "aliases": ["asia", "asian", "あじあ"],
+    "tags": {
+      "culturalTexture": ["east-asia", "sinosphere", "taiwan-streetscape", "signage"],
+      "environment": ["urban-night", "transit"],
+      "affect": ["tropical", "humid", "festive", "local"]
+    },
+    "composition": {
+      "speed": 0.28
+    },
+    "palette": {
+      "hueOffset": 18,
+      "saturation": 42,
+      "lightness": 36
+    },
+    "energy": 0.48
+  },
+  "華語": {
+    "aliases": ["mandopop", "huayu", "かご", "甜約翰"],
+    "tags": {
+      "culturalTexture": ["sinosphere", "east-asia", "signage"],
+      "affect": ["tender", "wistful", "nostalgic", "sweet"],
+      "motion": ["drift", "sway"]
+    },
+    "composition": {
+      "speed": 0.22
+    },
+    "palette": {
+      "hueOffset": 330,
+      "saturation": 34,
+      "lightness": 48
+    },
+    "energy": 0.38
+  },
+  "チル": {
+    "aliases": ["chill", "ちる", "relaxed"],
+    "tags": {
+      "affect": ["calm", "soft", "restrained", "understated", "meditative"],
+      "motion": ["drift", "breath", "sway"]
+    },
+    "composition": {
+      "speed": 0.12
+    },
+    "palette": {
+      "saturation": 22,
+      "lightness": 44
+    },
+    "energy": 0.22
+  },
+  "夏": {
+    "aliases": ["summer", "なつ"],
+    "tags": {
+      "affect": ["tropical", "humid", "energetic", "alive"],
+      "environment": ["coastal", "urban", "botanical"],
+      "motion": ["sway", "wave"]
+    },
+    "composition": {
+      "speed": 0.32
+    },
+    "palette": {
+      "hueOffset": 48,
+      "saturation": 40,
+      "lightness": 58
+    },
+    "energy": 0.5
+  },
+  "さわやか": {
+    "aliases": ["refreshing", "fresh", "さわやかな"],
+    "tags": {
+      "affect": ["soft", "delicate", "calm"],
+      "environment": ["coastal", "botanical"],
+      "motion": ["breath", "ripple"]
+    },
+    "composition": {
+      "speed": 0.2
+    },
+    "palette": {
+      "hueOffset": 175,
+      "saturation": 28,
+      "lightness": 68
+    },
+    "energy": 0.28
+  },
+  "夜市": {
+    "aliases": ["night-market", "よいち", "市集"],
+    "tags": {
+      "culturalTexture": ["taiwan-streetscape", "signage", "sinosphere"],
+      "environment": ["urban-night", "late-night-store"],
+      "affect": ["humid", "nocturnal", "festive", "intimate"],
+      "material": ["vinyl-curtain", "cheap-led", "neon"]
+    },
+    "composition": {
+      "speed": 0.2
+    },
+    "palette": {
+      "hueOffset": 32,
+      "saturation": 50,
+      "lightness": 18
+    },
+    "energy": 0.35
+  },
+  "花布": {
+    "aliases": ["floral-cloth", "はなぬの", "jacquard", "座席柄"],
+    "tags": {
+      "culturalTexture": ["taiwan-streetscape", "retro"],
+      "environment": ["transit", "patterned"],
+      "affect": ["kitsch", "nostalgic", "playful"],
+      "material": ["mosaic", "stripe"]
+    },
+    "composition": {
+      "symmetry": 2,
+      "speed": 0.18
+    },
+    "palette": {
+      "hueOffset": 340,
+      "saturation": 45,
+      "lightness": 42
+    },
+    "energy": 0.4
+  },
+  "硬派": {
+    "aliases": ["hard-edged", "こうは", "strict"],
+    "tags": {
+      "affect": ["structured", "brutalist", "industrial", "restrained", "heavy"],
+      "material": ["hard-edge", "iron", "galvanized-steel", "concrete"],
+      "environment": ["urban", "architectural"]
+    },
+    "composition": {
+      "symmetry": 4,
+      "speed": 0.35
+    },
+    "palette": {
+      "saturation": 18,
+      "lightness": 28
+    },
+    "energy": 0.55
+  },
+  "R&B": {
+    "aliases": ["rnb", "r-and-b", "アールアンドビー"],
+    "tags": {
+      "affect": ["tender", "intimate", "soft", "nocturnal", "sweet"],
+      "motion": ["sway", "pulse", "breath"],
+      "environment": ["interior", "club"]
+    },
+    "composition": {
+      "speed": 0.24
+    },
+    "palette": {
+      "hueOffset": 300,
+      "saturation": 36,
+      "lightness": 32
+    },
+    "energy": 0.4
+  },
+  "漂う": {
+    "aliases": ["float", "tadayou", "漂ウ", "ゆれる"],
+    "tags": {
+      "affect": ["suspended", "dreamy", "liquid", "slow"],
+      "motion": ["sway", "drift", "wave", "ripple"],
+      "material": ["fluid"]
+    },
+    "composition": {
+      "speed": 0.1
+    },
+    "palette": {
+      "hueOffset": 200,
+      "saturation": 26,
+      "lightness": 52
+    },
+    "energy": 0.2
+  },
+  "お茶会": {
+    "aliases": ["tea-party", "ocha", "buffet", "BUFFFFFFFET"],
+    "tags": {
+      "affect": ["playful", "mundane", "personal", "soft", "festive"],
+      "environment": ["domestic", "interior", "venue"],
+      "culturalTexture": ["retro"]
+    },
+    "composition": {
+      "speed": 0.22
+    },
+    "palette": {
+      "hueOffset": 35,
+      "saturation": 32,
+      "lightness": 58
+    },
+    "energy": 0.35
+  },
+  "にぎやか": {
+    "aliases": ["lively", "bustling", "にぎやかな"],
+    "tags": {
+      "affect": ["festive", "energetic", "playful", "dense"],
+      "culturalTexture": ["signage", "taiwan-streetscape"],
+      "motion": ["pulse", "flicker"]
+    },
+    "composition": {
+      "speed": 0.45
+    },
+    "palette": {
+      "saturation": 55,
+      "lightness": 40
+    },
+    "energy": 0.62
+  },
+  "ふわふわ": {
+    "aliases": ["fluffy", "floaty", "ふわっと"],
+    "tags": {
+      "affect": ["soft", "dreamy", "hazy", "delicate"],
+      "motion": ["drift", "breath", "sway"],
+      "material": ["fluid"]
+    },
+    "composition": {
+      "speed": 0.14
+    },
+    "palette": {
+      "saturation": 20,
+      "lightness": 70
+    },
+    "energy": 0.2
+  },
+  "環島": {
+    "aliases": ["huandao", "around-island", "かんとう"],
+    "tags": {
+      "environment": ["road", "coastal", "terrain", "maritime"],
+      "culturalTexture": ["taiwan-streetscape"],
+      "affect": ["travelling", "persistent", "effortful", "humid"]
+    },
+    "composition": {
+      "speed": 0.3
+    },
+    "palette": {
+      "hueOffset": 145,
+      "saturation": 28,
+      "lightness": 46
+    },
+    "energy": 0.42
+  },
+  "雨": {
+    "aliases": ["rain", "あめ", "rainy"],
+    "tags": {
+      "affect": ["wet", "humid", "murky", "melancholic"],
+      "material": ["wet-concrete", "fluid"],
+      "motion": ["drift", "ripple"],
+      "environment": ["urban-night", "terrain"]
+    },
+    "composition": {
+      "speed": 0.16
+    },
+    "palette": {
+      "hueOffset": 210,
+      "saturation": 22,
+      "lightness": 30
+    },
+    "energy": 0.28
+  },
+  "山": {
+    "aliases": ["mountain", "やま"],
+    "tags": {
+      "environment": ["terrain", "botanical"],
+      "affect": ["effortful", "heavy", "quiet", "organic"],
+      "motion": ["static", "drift"]
+    },
+    "composition": {
+      "speed": 0.12
+    },
+    "palette": {
+      "hueOffset": 120,
+      "saturation": 24,
+      "lightness": 38
+    },
+    "energy": 0.3
+  },
+  "港": {
+    "aliases": ["harbor", "port", "みなと"],
+    "tags": {
+      "environment": ["maritime", "coastal", "urban"],
+      "affect": ["suspended", "melancholic", "slow", "tactile"],
+      "motion": ["wave", "sway"]
+    },
+    "composition": {
+      "speed": 0.15
+    },
+    "palette": {
+      "hueOffset": 195,
+      "saturation": 26,
+      "lightness": 36
+    },
+    "energy": 0.28
+  },
+  "騎楼": {
+    "aliases": ["qilou", "arcade", "きろう"],
+    "tags": {
+      "culturalTexture": ["taiwan-streetscape", "sinosphere"],
+      "environment": ["urban", "architectural"],
+      "affect": ["nostalgic", "restrained", "weathered"]
+    },
+    "composition": {
+      "speed": 0.14,
+      "symmetry": 2
+    },
+    "palette": {
+      "hueOffset": 25,
+      "saturation": 22,
+      "lightness": 34
+    },
+    "energy": 0.32
+  },
+  "鉄格子": {
+    "aliases": ["grille", "てつごうし", "鉄柵"],
+    "tags": {
+      "culturalTexture": ["taiwan-streetscape", "sinosphere"],
+      "material": ["iron", "lattice", "hard-edge"],
+      "affect": ["nostalgic", "structured"]
+    },
+    "composition": {
+      "symmetry": 3,
+      "speed": 0.18
+    },
+    "palette": {
+      "saturation": 16,
+      "lightness": 30
+    },
+    "energy": 0.38
+  },
+  "ビニールカーテン": {
+    "aliases": ["vinyl-curtain", "のれん", "カーテン"],
+    "tags": {
+      "material": ["vinyl-curtain", "plastic"],
+      "affect": ["humid", "nocturnal", "intimate", "mundane"],
+      "motion": ["sway"]
+    },
+    "composition": {
+      "speed": 0.16
+    },
+    "palette": {
+      "hueOffset": 40,
+      "saturation": 30,
+      "lightness": 28
+    },
+    "energy": 0.3
+  },
+  "蛍光灯": {
+    "aliases": ["fluorescent", "けいこうとう"],
+    "tags": {
+      "material": ["fluorescent"],
+      "environment": ["interior", "late-night-store", "domestic"],
+      "motion": ["flicker"],
+      "affect": ["nostalgic", "sterile", "mundane"]
+    },
+    "palette": {
+      "hueOffset": 95,
+      "saturation": 20,
+      "lightness": 62
+    },
+    "energy": 0.32
+  },
+  "街灯": {
+    "aliases": ["streetlight", "sodium", "ナトリウム灯"],
+    "tags": {
+      "environment": ["urban-night", "road"],
+      "material": ["sodium-vapor"],
+      "affect": ["nocturnal", "nostalgic", "lonely"]
+    },
+    "palette": {
+      "hueOffset": 38,
+      "saturation": 48,
+      "lightness": 22
+    },
+    "energy": 0.3
+  },
+  "コンビニ": {
+    "aliases": ["convenience-store", "konbini", "深夜店"],
+    "tags": {
+      "environment": ["late-night-store", "interior", "suburban"],
+      "affect": ["mundane", "sterile", "nocturnal", "cold"],
+      "material": ["fluorescent"]
+    },
+    "palette": {
+      "hueOffset": 185,
+      "saturation": 28,
+      "lightness": 55
+    },
+    "energy": 0.28
+  },
+  "インフラ": {
+    "aliases": ["infra", "viaduct", "高架", "骨格"],
+    "tags": {
+      "affect": ["infrastructural", "brutalist", "metropolitan", "heavy"],
+      "environment": ["urban", "architectural", "road"],
+      "material": ["concrete", "galvanized-steel"]
+    },
+    "composition": {
+      "symmetry": 2,
+      "speed": 0.25
+    },
+    "palette": {
+      "saturation": 12,
+      "lightness": 32
+    },
+    "energy": 0.48
+  },
+  "PA": {
+    "aliases": ["backstage", "スピーカー", "現場機材"],
+    "tags": {
+      "environment": ["backstage", "venue", "club"],
+      "material": ["speaker", "speaker-carpet"],
+      "affect": ["tactile", "understated", "literal"]
+    },
+    "composition": {
+      "speed": 0.18
+    },
+    "palette": {
+      "saturation": 14,
+      "lightness": 28
+    },
+    "energy": 0.35
+  },
+  "MiniDV": {
+    "aliases": ["minidv", "2000s-cam", "家庭用カメラ"],
+    "tags": {
+      "material": ["minidv", "tape", "film"],
+      "culturalTexture": ["lo-fi", "retro", "broadcast"],
+      "affect": ["2000s", "personal", "faded", "nostalgic"]
+    },
+    "palette": {
+      "saturation": 30,
+      "lightness": 48
+    },
+    "energy": 0.32
+  },
+  "CRT": {
+    "aliases": ["ブラウン管", "crt-monitor"],
+    "tags": {
+      "material": ["crt", "phosphor"],
+      "culturalTexture": ["retro", "broadcast"],
+      "motion": ["scan"],
+      "affect": ["nostalgic", "electric"]
+    },
+    "palette": {
+      "hueOffset": 130,
+      "saturation": 35,
+      "lightness": 40
+    },
+    "energy": 0.4
+  },
+  "安いLED": {
+    "aliases": ["cheap-led", "電飾", "led看板"],
+    "tags": {
+      "material": ["cheap-led", "neon"],
+      "culturalTexture": ["signage", "stadium"],
+      "motion": ["flicker"],
+      "affect": ["kitsch", "festive", "cheap", "digital"]
+    },
+    "palette": {
+      "saturation": 70,
+      "lightness": 45
+    },
+    "energy": 0.58
+  },
+  "台風": {
+    "aliases": ["typhoon", "たいふう", "shear"],
+    "tags": {
+      "affect": ["ominous", "tropical", "tense", "unstable"],
+      "motion": ["turbulent", "swirl"],
+      "environment": ["terrain", "coastal"]
+    },
+    "composition": {
+      "speed": 0.7
+    },
+    "palette": {
+      "hueOffset": 220,
+      "saturation": 28,
+      "lightness": 24
+    },
+    "energy": 0.72
+  },
+  "スクーター": {
+    "aliases": ["scooter", "機車", "バイクの流れ"],
+    "tags": {
+      "culturalTexture": ["taiwan-streetscape"],
+      "environment": ["urban", "road", "transit"],
+      "affect": ["kinetic", "humid", "restless"],
+      "motion": ["directional", "pulse"]
+    },
+    "composition": {
+      "speed": 0.55
+    },
+    "palette": {
+      "hueOffset": 15,
+      "saturation": 35,
+      "lightness": 38
+    },
+    "energy": 0.58
+  },
+  "神社仏閣": {
+    "aliases": ["temple", "廟", "zigzag", "お寺"],
+    "tags": {
+      "culturalTexture": ["sinosphere", "east-asia"],
+      "affect": ["festive", "ornate", "electric", "traditional"],
+      "material": ["gold-leaf"]
+    },
+    "composition": {
+      "speed": 0.35,
+      "symmetry": 2
+    },
+    "palette": {
+      "hueOffset": 8,
+      "saturation": 62,
+      "lightness": 42
+    },
+    "energy": 0.55
+  },
+  "カラオケ": {
+    "aliases": ["karaoke", "からおけ", "LCD"],
+    "tags": {
+      "culturalTexture": ["east-asia-karaoke", "east-asia"],
+      "affect": ["cheap", "festive", "2000s", "kitsch"],
+      "environment": ["interior", "club"]
+    },
+    "palette": {
+      "hueOffset": 280,
+      "saturation": 55,
+      "lightness": 40
+    },
+    "energy": 0.55
+  },
+  "ハウス": {
+    "aliases": ["house", "はうす"],
+    "tags": {
+      "affect": ["propulsive", "rhythmic", "hypnotic", "restrained"],
+      "motion": ["pulse", "spin", "rotate"],
+      "environment": ["club", "venue"],
+      "material": ["hard-edge", "geometric"]
+    },
+    "composition": {
+      "symmetry": 4,
+      "speed": 0.55
+    },
+    "palette": {
+      "saturation": 30,
+      "lightness": 36
+    },
+    "energy": 0.6
+  },
+  "アンビエント": {
+    "aliases": ["ambient", "あんびえん"],
+    "tags": {
+      "affect": ["meditative", "quiet", "sparse", "slow", "dreamy"],
+      "motion": ["drift", "breath", "static"],
+      "material": ["fluid", "wash"]
+    },
+    "composition": {
+      "speed": 0.08
+    },
+    "palette": {
+      "saturation": 18,
+      "lightness": 40
+    },
+    "energy": 0.12
+  },
+  "ドラムンベース": {
+    "aliases": ["dnb", "drum-and-bass", "ドラムン"],
+    "tags": {
+      "affect": ["propulsive", "kinetic", "restless", "tense"],
+      "motion": ["pulse", "glitch", "scan", "turbulent"],
+      "environment": ["club"]
+    },
+    "composition": {
+      "speed": 0.95
+    },
+    "palette": {
+      "saturation": 40,
+      "lightness": 28
+    },
+    "energy": 0.82
+  },
+  "夕立": {
+    "aliases": ["evening-rain", "にわか雨", "ゆうだち"],
+    "tags": {
+      "affect": ["wet", "humid", "dramatic", "tropical"],
+      "motion": ["turbulent", "ripple"],
+      "environment": ["urban", "urban-night"]
+    },
+    "composition": {
+      "speed": 0.4
+    },
+    "palette": {
+      "hueOffset": 225,
+      "saturation": 30,
+      "lightness": 26
+    },
+    "energy": 0.5
+  },
+  "明け方": {
+    "aliases": ["dawn", "あさ", "afterhours"],
+    "tags": {
+      "affect": ["wistful", "faded", "quiet", "lonely", "hazy"],
+      "environment": ["urban-night", "road", "suburban"],
+      "motion": ["drift", "breath"]
+    },
+    "composition": {
+      "speed": 0.1
+    },
+    "palette": {
+      "hueOffset": 25,
+      "saturation": 22,
+      "lightness": 48
+    },
+    "energy": 0.18
+  },
+  "開場前": {
+    "aliases": ["doors", "pre-open", "かいじょうまえ"],
+    "tags": {
+      "affect": ["quiet", "provisional", "understated", "sparse"],
+      "environment": ["venue", "backstage", "interior"],
+      "motion": ["static", "breath"]
+    },
+    "composition": {
+      "speed": 0.08
+    },
+    "palette": {
+      "saturation": 14,
+      "lightness": 35
+    },
+    "energy": 0.15
+  },
+  "ピーク": {
+    "aliases": ["peak", "サビ", "盛り上がり"],
+    "tags": {
+      "affect": ["energetic", "propulsive", "festive", "dramatic"],
+      "motion": ["pulse", "spin", "turbulent"],
+      "environment": ["club", "venue"]
+    },
+    "composition": {
+      "speed": 0.75
+    },
+    "palette": {
+      "saturation": 58,
+      "lightness": 40
+    },
+    "energy": 0.78
+  },
+  "ブレイク": {
+    "aliases": ["break", "breakdown", "間"],
+    "tags": {
+      "affect": ["sparse", "suspended", "restrained", "uneasy"],
+      "motion": ["static", "breath"],
+      "environment": ["club"]
+    },
+    "composition": {
+      "speed": 0.12
+    },
+    "palette": {
+      "saturation": 18,
+      "lightness": 22
+    },
+    "energy": 0.2
+  },
+  "湿気": {
+    "aliases": ["humidity", "しっけ", "むし暑い"],
+    "tags": {
+      "affect": ["humid", "hazy", "tropical", "murky"],
+      "material": ["fluid", "wet-concrete"],
+      "motion": ["drift", "sway"]
+    },
+    "composition": {
+      "speed": 0.14
+    },
+    "palette": {
+      "saturation": 24,
+      "lightness": 42
+    },
+    "energy": 0.3
+  },
+  "低彩度": {
+    "aliases": ["desaturated", "muted", "くすみ"],
+    "tags": {
+      "affect": ["restrained", "understated", "faded", "mundane"]
+    },
+    "palette": {
+      "saturation": 14,
+      "lightness": 40
+    },
+    "energy": 0.25
+  },
+  "生活夜": {
+    "aliases": ["lived-in-night", "せいかつよる"],
+    "tags": {
+      "environment": ["domestic", "late-night-store", "urban-night", "suburban"],
+      "affect": ["mundane", "nocturnal", "personal", "humid"],
+      "material": ["fluorescent", "sodium-vapor"]
+    },
+    "composition": {
+      "speed": 0.16
+    },
+    "palette": {
+      "hueOffset": 45,
+      "saturation": 22,
+      "lightness": 26
+    },
+    "energy": 0.28
+  },
+  "野良": {
+    "aliases": ["nora", "floating-dj", "ふらふら"],
+    "tags": {
+      "affect": ["provisional", "travelling", "local", "personal"],
+      "environment": ["venue", "urban", "transit"],
+      "culturalTexture": ["lo-fi"]
+    },
+    "composition": {
+      "speed": 0.25
+    },
+    "palette": {
+      "saturation": 26,
+      "lightness": 40
+    },
+    "energy": 0.4
+  },
+  "甘さ": {
+    "aliases": ["sweetness", "あまさ", "甘い"],
+    "tags": {
+      "affect": ["sweet", "tender", "soft", "playful"],
+      "motion": ["sway", "breath"],
+      "material": ["organic"]
+    },
+    "palette": {
+      "hueOffset": 340,
+      "saturation": 38,
+      "lightness": 55
+    },
+    "energy": 0.32
+  },
+  "墨": {
+    "aliases": ["sumi", "ink", "すみ"],
+    "tags": {
+      "material": ["ink", "sumi"],
+      "culturalTexture": ["calligraphic", "east-asia", "japan"],
+      "affect": ["restrained", "meditative", "sparse"]
+    },
+    "composition": {
+      "speed": 0.1
+    },
+    "palette": {
+      "saturation": 8,
+      "lightness": 28
+    },
+    "energy": 0.18
   }
 }

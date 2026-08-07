@@ -138,6 +138,27 @@ Generator は 105 個中 8 個しか音の uniform を読まないので、**画
 
 画面右側の **Timeline パネル**では、数秒〜数小節先の演出イベント（シード変更やトランジションなど）をあらかじめ予約でき、演出の流れを JSON として記録・再生できます。詳細は Issue #3 の RFC を参照してください。
 
+### recipe（`vj-recipe.mjs`）— ムード + seed + tweaks を JSON で持ち回る
+
+`src/synth/validate.ts` は `VisualOperator` の `generatorVersion` が catalog の現行 version と厳密に一致することを要求し、catalog は各 generator の最新版しか保持しません。そのため生の Patch JSON をそのままリポジトリに置くと、generator の version が上がった瞬間に静かに壊れてしまいます。**recipe**（`recipes/*.json`）はこの問題を避けるため、Patch そのものではなく「ムード語 + seed（`vj-gen.mjs` へ渡す）+ 差分トークン列（`vj-tweak.mjs` 形式）」という作り直し可能な指示書だけを保存します。小さくて diff しやすく、catalog がどれだけ変わっても現行 catalog に対して作り直せます。
+
+- `recipes/*.json` … 個々の recipe（`{ name, mood, seed, tweaks, notes }`）
+- `recipes/setlists/*.json` … 複数の recipe を時間軸に並べたセットリスト（データのみ。実行 CLI は別途）
+
+```bash
+# 一覧表示（通信なし）
+node scripts/vj-recipe.mjs list
+
+# 中身を見る（通信なし）
+node scripts/vj-recipe.mjs show humid-qilou-night
+
+# mood+seed から作り直し、tweaks を重ねた draft を確認する（送信しない）
+node scripts/vj-recipe.mjs apply humid-qilou-night --url wss://example.workers.dev/room/xxxx --dry-run
+
+# 検証を通ったら送る
+node scripts/vj-recipe.mjs apply humid-qilou-night --url wss://example.workers.dev/room/xxxx
+```
+
 ## テンポ同期（BPM 検出）
 
 入力音声からリアルタイムに BPM を推定し、ビートグリッドを生成して各シーンのパルスやオートサイクルを音楽の拍に合わせます。パネルの **Tempo** セクションに現在の BPM とステータスチップ、拍位置を示す 4 つのドット（1 拍目＝ダウンビートを強調）が表示されます。

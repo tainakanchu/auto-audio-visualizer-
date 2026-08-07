@@ -1,0 +1,19 @@
+{
+  "name": "crt-broadcast-ghost",
+  "mood": ["CRT", "懐かしい", "夜", "静か"],
+  "seed": "crt-broadcast-ghost-v1",
+  "tweaks": [
+    "mod0:=scanSlip",
+    "mod0.bandH=0.06",
+    "mod0.slip=0.25",
+    "mod0.travelRate=0.6",
+    "mat0:=crt",
+    "mat0.hue=140",
+    "mat0.scanline=0.55",
+    "mat0.aberration=0.25",
+    "palette.saturation=32",
+    "palette.lightness=36",
+    "composition.speed=0.2"
+  ],
+  "notes": "放送終了後の残像。R&B チルの B 面向き。"
+}

@@ -1,0 +1,18 @@
+{
+  "name": "ambient-harbor-black",
+  "mood": ["アンビエント", "港", "静か", "暗い"],
+  "seed": "ambient-harbor-black-v1",
+  "tweaks": [
+    "src0:=mooringRope",
+    "fld0:=harborBackwash",
+    "fld0.period=8",
+    "fld0.asymmetry=0.3",
+    "fld0.amount=0.22",
+    "mat0:=ink",
+    "mat0.density=0.55",
+    "palette.saturation=12",
+    "palette.lightness=22",
+    "composition.speed=0.08"
+  ],
+  "notes": "セットの最静。route amount を手で上げない。"
+}

@@ -1,0 +1,17 @@
+{
+  "name": "buffet-curry-chaos",
+  "mood": ["お茶会", "にぎやか", "花布", "夏"],
+  "seed": "buffet-curry-chaos-v1",
+  "tweaks": [
+    "src0:=busJacquard",
+    "src0.switchRate=0.22",
+    "mat0:=karaokeLcd",
+    "mat0.cheapness=0.55",
+    "mat0.intensity=0.4",
+    "palette.hueOffset=25",
+    "palette.saturation=52",
+    "palette.lightness=42",
+    "composition.speed=0.38"
+  ],
+  "notes": "カレーありコーヒーありのにぎやか回。kitsch 許可ゾーン。"
+}

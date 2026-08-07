@@ -1,0 +1,15 @@
+{
+  "name": "dnb-macroblock-break",
+  "mood": ["ドラムンベース", "ブレイク", "攻めた", "CRT"],
+  "seed": "dnb-macroblock-break-v1",
+  "tweaks": [
+    "src0:=grid",
+    "mod0:=macroblock",
+    "mod0.blockSize=0.22",
+    "mat0:=crt",
+    "mat0.scanline=0.4",
+    "palette.lightness=20",
+    "composition.speed=0.25"
+  ],
+  "notes": "ブレイクで一度速度を落とす。drop 後に dnb-tunnel-draft へ slow 遷移。"
+}

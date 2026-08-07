@@ -1,0 +1,19 @@
+{
+  "name": "dawn-afterhours-road",
+  "mood": ["明け方", "環島", "雨", "ふわふわ"],
+  "seed": "dawn-afterhours-road-v1",
+  "tweaks": [
+    "src0:=roadStitch",
+    "src0.speed=0.08",
+    "+sleeperRail:fld0",
+    "fld0.speed=0.12",
+    "fld0.amount=0.25",
+    "mat0:=minidvFade",
+    "mat0.age=0.5",
+    "palette.hueOffset=25",
+    "palette.saturation=20",
+    "palette.lightness=48",
+    "composition.speed=0.1"
+  ],
+  "notes": "明け方の帰路。lonely travelling。彩度を戻しすぎない。"
+}
