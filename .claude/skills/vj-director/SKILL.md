@@ -242,6 +242,17 @@ catalog をキャッシュし、次回以降は `vj-ctl.mjs catalog` を叩か�
 更新されたのに古いキャッシュが残っていると、catalog に無い generator/parameter で
 ローカル検証が誤って通る/落ちることがあるので、そのときは `--refresh-catalog` を付ける。
 
+**この2つのローカル検証は `src/synth/validate.ts` の手作業による複製で、しかも
+budget/cost チェックを含まない。** 複製はすでに一部古くなっている実例がある —
+`src/synth/validate.ts` の `AUDIO_SOURCES`（route の `source` に書ける `audio:*` の
+集合）は 10 種類あるが、`vj-gen.mjs` 側の複製は `audio:beatIntensity` /
+`audio:gridPulse` / `audio:barPulse` の3つが抜けたまま7種類しか無い。加えて、
+`src/synth/cost.ts` の `fitsBudget(estimateCost(...))`（render budget 超過チェック）は
+どちらのローカル検証にも**まったく実装されていない**。つまりこの2つのローカル検証を
+通っても、サーバ側で budget 超過として弾かれることがある。**送信前には
+`scripts/vj-validate.mjs`（後述）も併せて通すこと。** 複製ではなく本物の `.ts` を
+実行するので、ルールのズレも budget チェックの欠落も構造的に起きない。
+
 ## vj-gen.mjs — ムード語から生成する
 
 `"雲 静寂 青"` のような気分語（日本語 / 英語 / ローマ字が混在してよい）を
@@ -316,8 +327,14 @@ node scripts/vj-tweak.mjs --url wss://example.workers.dev/room/xxxx --refresh-ca
 | `qualityTier=<value>` | qualityTier を変更（low/medium/high） | `qualityTier=high` |
 
 送信前のローカル検証は `src/synth/validate.ts` の主要ルール（generator/parameter の実在・型・
-範囲、enum、ステージ本数の上下限、`palette.mode`）を複製したもの。CLI は `.ts` を import
-できないので値は手で複製している — サーバ側のルールを変えたらここも合わせて直すこと。
+範囲、enum、ステージ本数の上下限、`palette.mode`）を複製したもの。**この複製はすでに一部
+古くなっており**（`AUDIO_SOURCES` に `audio:beatIntensity` / `audio:gridPulse` /
+`audio:barPulse` が無い — 上の節を参照）、budget/cost チェックも一切含まない。
+かつては「CLI は `.ts` を import できない」ことがこの複製の理由だったが、**それはもう
+正しくない** — `scripts/vj-validate.mjs`（後述）が Vite の SSR モジュールローダーで
+`.ts` を直接実行できることを示している。サーバ側のルールを変えたらここも合わせて直す、
+という運用は変わらず必要だが、**送信前の最終確認は複製であるここではなく
+`vj-validate.mjs` で行うこと。**
 
 **operator の差し替え・削除をしたときは route の追従に注意。** `<opId>:=<generatorId>` や
 `-<opId>` で operator の generator が変わる/消えると、その operator のパラメータを target に
@@ -326,11 +343,56 @@ node scripts/vj-tweak.mjs --url wss://example.workers.dev/room/xxxx --refresh-ca
 パラメータを参照する route を自動的に落とす。**黙っては消さない** — 何を落としたかは必ず
 stderr に警告として出る。
 
+## vj-validate.mjs — 送信前に本物の検証ゲートを通す
+
+`vj-gen.mjs` / `vj-tweak.mjs` のローカル検証は `src/synth/validate.ts` の手作業による
+複製で、budget/cost チェックが無く、サーバ側のルールが変わると気付かないまま古くなる
+（上の節で触れた `AUDIO_SOURCES` の欠落が実例）。`scripts/vj-validate.mjs` はこれを
+解消する CLI。**「CLI は `.ts` を import できない」という前提はもう成り立たない** —
+Vite の SSR モジュールローダー（`server.ssrLoadModule`。`measure-coverage.mjs` と同じ
+手法）で `src/synth/{schema,validate,cost,catalog,generators/index}.ts` をそのまま
+実行する。複製ではなく本物を呼ぶので、サーバ側のゲート（`gatePatchProposal`、
+`src/synth/apply.ts`）とルールが食い違うことは構造的に無い。`vj-ctl.mjs` は一切
+呼ばない（WebSocket 通信もしない）ので `--url` は不要 — 完全にローカルで完結する。
+
+サーバ側の `proposePatch` と同じ3段階をそのままなぞる:
+
+1. `parsePatch`（schema.ts）— スキーマ検証（valibot）
+2. `validatePatch`（validate.ts）— 構造ルール（id 一意性・generator 実在・ステージ順・
+   員数・パラメータ型域・route・画像テクスチャスロット参照）
+3. `fitsBudget(estimateCost(...))`（cost.ts）— **budget/cost チェック。vj-gen.mjs /
+   vj-tweak.mjs のローカル検証には無い、この3段のうち唯一サーバ側でしか弾けなかったもの。**
+
+```bash
+node scripts/vj-validate.mjs patch.json              # 1 ファイル
+node scripts/vj-validate.mjs dir/*.json               # 複数ファイル
+node scripts/vj-validate.mjs --stdin < patch.json      # stdin から1つ
+node scripts/vj-validate.mjs --quality low patch.json  # budget チェックだけ低い tier で試す（what-if）
+```
+
+- **OK** … operator 構成（`category:generatorId` の並び）・estimated cost
+  （total/passes/heavy/stateful）・qualityTier を1ブロックで表示。exit 0。
+- **NG** … 失敗した段階（`json` / `schema` / `structural` / `budget`）ごとに issue を
+  列挙。budget 起因の NG は実測コストと budget の上限を構造化した行で必ず併記する
+  （メッセージ文字列だけに頼らない）。exit 1。
+- `--quality <tier>` は budget チェックに使う tier だけを上書きする what-if
+  オプション。省略時は本番の `proposePatch` と同じく **patch 自身の `qualityTier`**
+  を使う（`src/scenes/semanticSynth.ts` が `DEFAULT_BUDGETS[parsed.patch.qualityTier]`
+  を渡しているのに合わせてある）。`estimateCost` 自体は常に `patch.qualityTier` を
+  見るので、`--quality` を変えても cost の実測値は変わらない。
+
+**`vj-ctl.mjs patch <file>` で送る前は、必ず `vj-validate.mjs` を通すこと。** 特に
+budget 超過はローカル検証（vj-gen.mjs / vj-tweak.mjs）では一切検出できず、送ってから
+`{"ok":false,"issues":[...]}` で初めて分かる。手で組んだ Patch はもちろん、vj-gen /
+vj-tweak の `--dry-run` の出力も対象にすること。
+
 ## いつ何を使うか
 
 - **「〜な感じにして」「ムードで」「とりあえず変えて」** → `vj-gen.mjs "<mood words>"` を
   まず試す。狙いが緩いときはそのまま送り、外れていたら `--count` で比較するか
   `vj-tweak.mjs` で寄せる。手で Patch JSON を組むのは最後の手段。
+- **手で組んだ Patch JSON、または vj-gen/vj-tweak の `--dry-run` 結果を送る前** →
+  `vj-validate.mjs <file>` を通す。budget 超過はここでしか検出できない。
 - **「すぐ変えて」** → `seed <s>`（狙いが緩いとき・ガチャでよいとき）か `patch <file>`（狙いが明確なとき）。
 - **「後で変えて」「サビで」「あと 1 分くらいしたら」** → `event add`。
   秒で言われたら `--in`、小節で言われたら `--bar`。予約した id は出力に入っているので控えておく。
