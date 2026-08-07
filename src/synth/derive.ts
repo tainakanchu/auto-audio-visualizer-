@@ -8,7 +8,7 @@ import { createCatalog } from './catalog';
 import { DEFAULT_BUDGETS, estimateCost, fitsBudget } from './cost';
 import type { InlineGenerator, InlineGeneratorCatalog } from './generators/types';
 import { DEFAULT_SMOOTHING } from './modulation';
-import { namespaceToU32, rand } from './rng';
+import { namespaceToU32, pickWeightedByRendezvous, rand } from './rng';
 import { CURRENT_SCHEMA_VERSION } from './schema';
 import type {
   GeneratorCategory,
@@ -69,11 +69,13 @@ const ROUTE_SOURCES: readonly RouteSource[] = [
 ];
 
 /**
- * derive が変調してよいパラメータ名の**許可リスト**。
+ * derive が変調してよいパラメータ名の**許可リスト**を、「何に効くか」で分類した
+ * もの。{@link SAFE_TARGET_PARAMS} と {@link TARGET_WEIGHT_BY_PARAM} はどちらも
+ * ここから導出する（2 つの名簿が食い違うのを構造的に防ぐため）。
  *
  * 拒否リストではなく許可リストなのは、「音に反応して画が消える」ことを
  * 構造的に禁止するため。`threshold` / `gate` / `dropout` のように**上げると絵が
- * 消える**パラメータが 106 個の Generator に散らばっていて、名前で危険なものを
+ * 消える**パラメータが 105 個の Generator に散らばっていて、名前で危険なものを
  * 数え上げるやり方だと必ず取りこぼす。クラブの大音量下でずっと真っ暗、という
  * 事故は「たまに起きる」では済まないので、安全側が既定になる形にしてある。
  *
@@ -82,41 +84,66 @@ const ROUTE_SOURCES: readonly RouteSource[] = [
  * 効かない = 無音時の見た目が Patch の下限で、音が入るほど増える。
  *
  * 手で組んだ Patch はこの制限を受けない（proposePatch は validate だけ通る）。
+ *
+ * **weight を種類ごとに分けているのは単調さ対策**。許可リストは結果として
+ * 大きさ系がいちばん多く、候補を等確率で引くと選ばれるのもほぼ大きさ系に
+ * なる。どの Patch も「拍で大きくなる」だけの反応に収束していた（「音に連動
+ * するのが拡大縮小ばかり」の正体はこれ）。候補が少ない種類ほど重くして、
+ * 歪み・輝き・動きにも同じくらい票が回るようにしてある。
  */
-const SAFE_TARGET_PARAMS = new Set([
-  // 量・密度
-  'amount',
-  'density',
-  'count',
-  'intensity',
-  'strength',
-  'glow',
-  'brightness',
-  'sparkle',
-  'sheen',
-  // 大きさ
-  'scale',
-  'size',
-  'thickness',
-  'radius',
-  'width',
-  'depth',
-  // 動き
-  'speed',
-  'rate',
-  'spin',
-  'twist',
-  'wobble',
-  'drift',
-  'flow',
-  'vortex',
-  'pull',
-  'tension',
-  // 空間の歪み
-  'warp',
-  'zoom',
-  'shift',
-]);
+const TARGET_KINDS = {
+  /** 大きさ: 候補がいちばん多いので最も軽い = 相対的に選ばれにくい。 */
+  size: {
+    weight: 1,
+    params: ['scale', 'size', 'thickness', 'radius', 'width', 'depth', 'zoom'],
+  },
+  /** 量・密度 */
+  density: { weight: 2, params: ['amount', 'density', 'count'] },
+  /** 輝き */
+  light: {
+    weight: 2,
+    params: ['intensity', 'strength', 'glow', 'brightness', 'sparkle', 'sheen'],
+  },
+  /** 動き */
+  motion: {
+    weight: 2,
+    params: [
+      'speed',
+      'rate',
+      'spin',
+      'twist',
+      'wobble',
+      'drift',
+      'flow',
+      'vortex',
+      'pull',
+      'tension',
+    ],
+  },
+  /** 空間の歪み: 候補がいちばん少ないので最も重い。 */
+  warp: { weight: 3, params: ['warp', 'shift'] },
+} as const satisfies Record<string, { weight: number; params: readonly string[] }>;
+
+/** 変調してよい paramId。{@link TARGET_KINDS} の全 params。 */
+const SAFE_TARGET_PARAMS = new Set<string>(
+  Object.values(TARGET_KINDS).flatMap((kind) => kind.params),
+);
+
+/** paramId → 選ばれやすさ。{@link TARGET_KINDS} から導出するので取りこぼしが無い。 */
+const TARGET_WEIGHT_BY_PARAM = new Map<string, number>(
+  Object.values(TARGET_KINDS).flatMap((kind) =>
+    kind.params.map((id): [string, number] => [id, kind.weight]),
+  ),
+);
+
+/**
+ * 既に route が刺さっている Operator の target に掛ける係数。
+ *
+ * 1 つの Operator に 3 本まとまると、音が動かすのは画のごく一部だけになる。
+ * 禁止ではなく減点なのは、変調できる Operator が 1 つしか無い Patch でも
+ * route が引けなくならないようにするため。
+ */
+const SAME_OPERATOR_PENALTY = 0.35;
 
 /**
  * 動きの速さそのものを持つパラメータ。{@link SAFE_TARGET_PARAMS} の部分集合で、
@@ -386,6 +413,7 @@ function isValidInBudget(
 
 interface RouteTargetCandidate {
   key: string;
+  opId: string;
   min: number;
   max: number;
 }
@@ -410,36 +438,13 @@ function collectRouteTargets(
       if (!(param.max > param.min)) continue;
       out.push({
         key: `${op.id}.${param.id}`,
+        opId: op.id,
         min: param.min,
         max: param.max,
       });
     }
   }
   return out;
-}
-
-/**
- * 重み付きランデブー選択。`weight` が大きい候補ほど勝ちやすい。
- *
- * `rand^(1/weight)` は分布が weight に比例する古典的な重み付けで、素の
- * ランデブー（weight が全部 1）と同じ安定性を保つ: 候補が 1 つ増減しても、
- * その候補が最大値を取る場合以外は既存 seed の結果が変わらない。
- */
-function pickWeightedByRendezvous<T>(
-  seed: string,
-  ns: string,
-  candidates: readonly T[],
-  keyOf: (c: T) => string,
-  /** 省略時は全候補等確率（素のランデブーと同じ）。 */
-  weightOf: (c: T) => number = () => 1,
-): T {
-  const first = candidates[0];
-  if (first === undefined) {
-    throw new Error(`pickWeightedByRendezvous: no candidates for "${ns}"`);
-  }
-  const score = (c: T) =>
-    Math.pow(rand(seed, ns, namespaceToU32(keyOf(c))), 1 / Math.max(1e-6, weightOf(c)));
-  return candidates.reduce((best, c) => (score(c) > score(best) ? c : best), first);
 }
 
 /** target の paramId 部分。`<opId>.<paramId>` 前提。 */
@@ -451,9 +456,13 @@ function paramIdOf(targetKey: string): string {
  * Build {@link MIN_ROUTES}–{@link MAX_ROUTES} audio→param routes against final
  * operators. No duplicate targets.
  *
- * Generator 側は 106 個中 8 個しか音の uniform を読まないので、Patch が音に
- * 反応するかどうかは実質ここで決まる。本数・振り幅ともに控えめだと「音に
- * 反応している感が無い」Patch になるため、以前より本数も振り幅も増やしてある。
+ * Generator 側は 105 個中 8 個しか音の uniform を読まないので、Patch のどの
+ * パラメータが音に反応するかは実質ここで決まる（画面全体に効く共通の反応は
+ * gl/reactions のリアクション層が担当する）。
+ *
+ * target は **何に効くか** で重みを付けて引く（{@link TARGET_WEIGHT_BY_PARAM}）。
+ * 等確率だと候補数がそのまま出て「拍で大きくなる」ばかりになるため。同じ
+ * Operator に集中しないよう、既に route が刺さった Operator は減点する。
  *
  * **不変条件: 音は足す方向にしか効かない。**
  * - target は {@link SAFE_TARGET_PARAMS}（増える = 見える / 動く）だけ
@@ -478,6 +487,8 @@ function buildRoutes(
 
   const remaining = [...targets];
   const routes: ModulationRoute[] = [];
+  /** 既に route が刺さった Operator。次の target の重みを下げるのに使う。 */
+  const usedOps = new Set<string>();
 
   for (let i = 0; i < count; i++) {
     const source = pickWeightedByRendezvous(
@@ -492,8 +503,13 @@ function buildRoutes(
       `patch:route:${i}:target`,
       remaining,
       (t) => t.key,
+      // 候補は SAFE_TARGET_PARAMS 由来なので、weight は必ず引ける（?? は保険）。
+      (t) =>
+        (TARGET_WEIGHT_BY_PARAM.get(paramIdOf(t.key)) ?? 1) *
+        (usedOps.has(t.opId) ? SAME_OPERATOR_PENALTY : 1),
     );
     remaining.splice(remaining.indexOf(target), 1);
+    usedOps.add(target.opId);
 
     const ratioRaw =
       AMOUNT_RATIO_MIN +

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   assemblePatch,
   nsUniformName,
+  PIPELINE_FN,
   SEED_UNIFORM,
   textureSizeUniformName,
   textureUniformName,
@@ -9,6 +10,7 @@ import {
 } from './assemble';
 import { createInlineCatalog, inlineCatalog, stampGenerator } from '../generators';
 import { knownPreludeKeys, resolvePreludes } from './preludes';
+import { ALL_REACTIONS, REACTION_NS_CONST } from './reactions';
 import type { GeneratorDefinition, VisualPatch } from '../types';
 import type { EmitContext, InlineGenerator } from '../generators/types';
 
@@ -93,18 +95,21 @@ describe('synth/gl/assemblePatch', () => {
     expect(fragSrc).toContain(`uniform uint ${SEED_UNIFORM};`);
   });
 
-  it('main() call order: coord mod → field → source → material', () => {
+  it('pipeline call order: coord mod → field → source → material', () => {
     const { fragSrc } = assemblePatch(defaultPatch(), inlineCatalog);
 
-    // Extract main body roughly
+    // The operator graph lives in synthPipeline(), not main(): multi-tap
+    // reactions have to be able to evaluate it more than once per frame.
+    const pipeStart = fragSrc.indexOf(`vec4 ${PIPELINE_FN}(vec2 p) {`);
+    expect(pipeStart).toBeGreaterThanOrEqual(0);
     const mainStart = fragSrc.indexOf('void main()');
-    expect(mainStart).toBeGreaterThanOrEqual(0);
-    const main = fragSrc.slice(mainStart);
+    expect(mainStart).toBeGreaterThan(pipeStart);
+    const pipeline = fragSrc.slice(pipeStart, mainStart);
 
-    const idxCoord = main.indexOf('p = mod_coord_0(p);');
-    const idxField = main.indexOf('p += field_0(p) * u_fld0_amount;');
-    const idxSource = main.indexOf('v = max(v, source_0(p));');
-    const idxMaterial = main.indexOf('fragColor = material_0(v, p);');
+    const idxCoord = pipeline.indexOf('p = mod_coord_0(p);');
+    const idxField = pipeline.indexOf('p += field_0(p) * u_fld0_amount;');
+    const idxSource = pipeline.indexOf('v = max(v, source_0(p));');
+    const idxMaterial = pipeline.indexOf('vec4 col = material_0(v, p);');
 
     expect(idxCoord).toBeGreaterThanOrEqual(0);
     expect(idxField).toBeGreaterThanOrEqual(0);
@@ -114,6 +119,20 @@ describe('synth/gl/assemblePatch', () => {
     expect(idxCoord).toBeLessThan(idxField);
     expect(idxField).toBeLessThan(idxSource);
     expect(idxSource).toBeLessThan(idxMaterial);
+
+    // main() only sets up coords, calls the pipeline, and composites.
+    expect(fragSrc.slice(mainStart)).toContain(`vec4 col = ${PIPELINE_FN}(p);`);
+  });
+
+  it('a patch without a material still returns a colour from the pipeline', () => {
+    const base = defaultPatch();
+    const patch: VisualPatch = {
+      ...base,
+      operators: [base.operators[0]!],
+    };
+    const { fragSrc } = assemblePatch(patch, inlineCatalog);
+    expect(fragSrc).toContain('vec4 col = vec4(v, v, v, v);');
+    expect(fragSrc).toContain('  return col;');
   });
 
   it('sanitizes non-alphanumeric opIds in uniform names', () => {
@@ -147,10 +166,87 @@ describe('synth/gl/assemblePatch', () => {
     expect(fragSrc).toContain('synthRand');
   });
 
-  it('includes uFade uniform and multiplies fragColor by it', () => {
+  it('includes uFade uniform and multiplies the output by it', () => {
     const { fragSrc } = assemblePatch(defaultPatch(), inlineCatalog);
     expect(fragSrc).toContain('uniform float uFade;');
-    expect(fragSrc).toContain('fragColor *= uFade');
+    expect(fragSrc).toContain('fragColor = col * uFade;');
+  });
+});
+
+describe('synth/gl/assemblePatch audio reactions', () => {
+  it('every patch gets one coord reaction and one color reaction', () => {
+    const { reactions, fragSrc } = assemblePatch(defaultPatch(), inlineCatalog);
+    const picked = reactions.map((id) => ALL_REACTIONS.find((r) => r.id === id)!);
+
+    expect(picked.every(Boolean)).toBe(true);
+    expect(picked.filter((r) => r.stage === 'coord').length).toBeGreaterThanOrEqual(1);
+    expect(picked.filter((r) => r.stage === 'color').length).toBe(1);
+    for (const r of picked) expect(fragSrc).toContain(`reaction/${r.stage} ${r.id}`);
+    expect(fragSrc).toContain(`audio reactions: ${reactions.join(', ')}`);
+  });
+
+  it('reaction choice follows the operator topology, not the seed', () => {
+    // semanticSynth morphs a same-topology seed change in place on one deck, so
+    // it relies on "same topology → same fragSrc". A seed-dependent reaction
+    // would break that: the deck would report the new seed while still running
+    // the old program.
+    const a = assemblePatch(defaultPatch('seed-a'), inlineCatalog);
+    const b = assemblePatch(defaultPatch('seed-b'), inlineCatalog);
+    expect(a.reactions).toEqual(b.reactions);
+    expect(a.fragSrc).toBe(b.fragSrc);
+
+    const different = defaultPatch();
+    different.operators[0] = { ...different.operators[0]!, generatorId: 'stripes' };
+    expect(assemblePatch(different, inlineCatalog).reactions).not.toEqual(a.reactions);
+  });
+
+  it('reactions: "off" emits no reaction layer at all', () => {
+    const { fragSrc, reactions } = assemblePatch(defaultPatch(), inlineCatalog, {
+      reactions: 'off',
+    });
+    expect(reactions).toEqual([]);
+    expect(fragSrc).not.toContain('reaction/');
+    expect(fragSrc).not.toContain('float rPunch');
+    expect(fragSrc).not.toContain(REACTION_NS_CONST);
+    // The shared base response stays: it is what every patch is guaranteed.
+    expect(fragSrc).toContain('shared audio response');
+  });
+
+  it('an explicit id list is emitted verbatim, unknown ids throw', () => {
+    const { fragSrc, reactions } = assemblePatch(defaultPatch(), inlineCatalog, {
+      reactions: ['sliceShift', 'invertFlash'],
+    });
+    expect(reactions).toEqual(['sliceShift', 'invertFlash']);
+    expect(fragSrc).toContain('reaction/coord sliceShift');
+    expect(fragSrc).toContain('reaction/color invertFlash');
+
+    expect(() => assemblePatch(defaultPatch(), inlineCatalog, { reactions: ['nope'] })).toThrow(
+      /unknown audio reaction "nope"/,
+    );
+  });
+
+  it('multi-tap reactions call the pipeline again instead of the shared base', () => {
+    const { fragSrc } = assemblePatch(defaultPatch(), inlineCatalog, {
+      reactions: ['punchZoom', 'rgbSplit'],
+    });
+    // once for the frame + two chromatic taps
+    expect(countOccurrences(fragSrc, `${PIPELINE_FN}(`)).toBe(4); // 1 definition + 3 calls
+  });
+
+  it('a heavy patch never gets a multi-tap reaction', () => {
+    // sdfTunnel is a heavy raymarcher: tripling its fill rate on every beat is
+    // exactly what the budget check exists to prevent.
+    const base = defaultPatch();
+    const heavy: VisualPatch = {
+      ...base,
+      operators: [
+        { id: 'src0', generatorId: 'sdfTunnel', generatorVersion: 1, parameters: {} },
+        base.operators[3]!,
+      ],
+    };
+    const { reactions } = assemblePatch(heavy, inlineCatalog);
+    const multiTapIds = ALL_REACTIONS.filter((r) => r.multiTap).map((r) => r.id);
+    expect(reactions.some((id) => multiTapIds.includes(id))).toBe(false);
   });
 });
 

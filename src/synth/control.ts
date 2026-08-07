@@ -35,6 +35,14 @@ export interface SynthControlState {
   tempoLocked: boolean;
   /** 発火済みイベント id（UI 表示用）。 */
   firedIds: readonly string[];
+  /**
+   * 今の Patch に載っているオーディオ・リアクションの id（座標段 → 色段）。
+   *
+   * Patch には持たず topology から決まるので、`currentPatch` を見ても分からない。
+   * 「今どのグリッチが鳴っているか」は演出を組み立てる側が知りたい情報なので
+   * state で出す。シーンが居ないときは空。
+   */
+  reactions: readonly string[];
 }
 
 /** setImage の結果。ok のとき hash は Patch の images 参照にそのまま使える。 */
@@ -92,6 +100,7 @@ function idleState(): SynthControlState {
     barCount: 0,
     tempoLocked: false,
     firedIds: [],
+    reactions: [],
   };
 }
 

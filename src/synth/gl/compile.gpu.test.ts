@@ -21,6 +21,7 @@
 import { afterAll, describe, expect, it } from 'vitest';
 import { FULLSCREEN_VERT } from '../../render/glutil';
 import { assemblePatch } from './assemble';
+import { ALL_REACTIONS } from './reactions';
 import { inlineCatalog, type InlineGenerator } from '../generators';
 import { rand } from '../rng';
 import {
@@ -314,6 +315,58 @@ describe('synth/gl assemblePatch GPU compile', () => {
 
       expect(failures.length).toBe(0);
       console.log(`[compile.gpu.test] all ${PATCH_COUNT} patches compiled and linked`);
+    },
+    compileTimeoutMs,
+  );
+
+  /**
+   * リアクション層は topology から選ばれるので、上のパッチ集合が全種類を引く保証は
+   * 無い。1 つ 1 つ名指しで組んで、どのスニペットも単体で通ることを確かめる
+   * （GLSL の書き間違いが「その topology を引いた本番でだけリンクエラー」になる
+   * のを防ぐ）。座標段と色段を総当たりで組み合わせ、変数名の衝突も一緒に見る。
+   */
+  it(
+    `compiles every audio reaction (${ALL_REACTIONS.length} in catalog)`,
+    async () => {
+      const coord = ALL_REACTIONS.filter((r) => r.stage === 'coord');
+      const color = ALL_REACTIONS.filter((r) => r.stage === 'color');
+      expect(coord.length).toBeGreaterThan(0);
+      expect(color.length).toBeGreaterThan(0);
+
+      const grid = requireGen('grid');
+      const neon = requireGen('neon');
+      const patch = basePatch([opFromDef('src0', grid.def), opFromDef('mat0', neon.def)]);
+
+      const failures: string[] = [];
+      for (const c of coord) {
+        for (const k of color) {
+          const label = `reaction/${c.id}+${k.id}`;
+          let fragSrc: string;
+          try {
+            fragSrc = assemblePatch(patch, inlineCatalog, {
+              reactions: [c.id, k.id],
+            }).fragSrc;
+          } catch (e) {
+            failures.push(
+              `${label}: assemblePatch threw: ${e instanceof Error ? e.message : String(e)}`,
+            );
+            continue;
+          }
+          const result = await compileInBrowser(pg, FULLSCREEN_VERT, fragSrc);
+          if (!result.ok) failures.push(`${label}:\n${result.log}`);
+        }
+      }
+
+      if (failures.length > 0) {
+        throw new Error(
+          `${failures.length} reaction combination(s) failed GPU compile/link:\n\n` +
+            failures.join('\n\n==========\n\n'),
+        );
+      }
+      expect(failures.length).toBe(0);
+      console.log(
+        `[compile.gpu.test] ${coord.length}×${color.length} reaction combinations compiled`,
+      );
     },
     compileTimeoutMs,
   );
