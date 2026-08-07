@@ -8,6 +8,7 @@ import {
   handleBridgeMessage,
   initBridgeClient,
   parseBridgePort,
+  parseMirrorMode,
   parseRoomId,
   resolveBridgeUrl,
 } from './bridgeClient';
@@ -178,6 +179,33 @@ describe('resolveBridgeUrl', () => {
 });
 
 // ---------------------------------------------------------------------------
+// parseMirrorMode
+// ---------------------------------------------------------------------------
+
+describe('parseMirrorMode', () => {
+  it('returns false when the parameter is absent', () => {
+    expect(parseMirrorMode('')).toBe(false);
+    expect(parseMirrorMode('?scene=semantic-synth&bridge=1')).toBe(false);
+  });
+
+  it('returns false for empty or non-enable values', () => {
+    // bridge と違い値なしは true にしない（明示の 1/true だけ）。
+    expect(parseMirrorMode('?mirror')).toBe(false);
+    expect(parseMirrorMode('?mirror=')).toBe(false);
+    expect(parseMirrorMode('?mirror=0')).toBe(false);
+    expect(parseMirrorMode('?mirror=yes')).toBe(false);
+    expect(parseMirrorMode('?mirror=false')).toBe(false);
+  });
+
+  it('maps the enable forms to true', () => {
+    expect(parseMirrorMode('?mirror=1')).toBe(true);
+    expect(parseMirrorMode('?mirror=true')).toBe(true);
+    expect(parseMirrorMode('?bridge=1&mirror=1')).toBe(true);
+    expect(parseMirrorMode('?room=abcd1234&mirror=true')).toBe(true);
+  });
+});
+
+// ---------------------------------------------------------------------------
 // initBridgeClient
 // ---------------------------------------------------------------------------
 
@@ -235,6 +263,39 @@ describe('initBridgeClient', () => {
     // 名乗り方はローカル bridge と同一。中継の実装が変わっても hello は変えない。
     expect(ws.sent).toEqual(['{"hello":"synth"}']);
 
+    handle?.close();
+  });
+
+  it('announces the mirror role when ?bridge=1&mirror=1', () => {
+    stubEnv('?bridge=1&mirror=1');
+    const handle = initBridgeClient();
+    const ws = FakeWebSocket.instances[0];
+    expect(ws.url).toBe('ws://127.0.0.1:7877');
+
+    ws.onopen?.();
+    expect(ws.sent).toEqual(['{"hello":"mirror"}']);
+
+    handle?.close();
+  });
+
+  it('announces the mirror role when ?room=...&mirror=1', () => {
+    stubEnv('?scene=semantic-synth&room=abcd1234&mirror=1', 'vj.example.com', 'https:');
+    const handle = initBridgeClient();
+    const ws = FakeWebSocket.instances[0];
+    expect(ws.url).toBe('wss://vj.example.com/room/abcd1234');
+
+    ws.onopen?.();
+    expect(ws.sent).toEqual(['{"hello":"mirror"}']);
+
+    handle?.close();
+  });
+
+  it('keeps hello synth when only ?bridge=1 is present (no mirror regression)', () => {
+    stubEnv('?bridge=1');
+    const handle = initBridgeClient();
+    const ws = FakeWebSocket.instances[0];
+    ws.onopen?.();
+    expect(ws.sent).toEqual(['{"hello":"synth"}']);
     handle?.close();
   });
 
@@ -405,5 +466,33 @@ describe('handleBridgeMessage', () => {
     expect(handleBridgeMessage('{"method":"getState"}')).toBeNull();
     expect(handleBridgeMessage('{"id":"1","method":"getState"}')).toBeNull();
     expect(handleBridgeMessage('{"id":1}')).toBeNull();
+  });
+
+  it('default synth role still ignores id-less frames (regression)', () => {
+    // mirror 追加後も、synth 経路は id 無しを受け付けない。
+    expect(handleBridgeMessage('{"method":"proposeSeed","params":{"seed":"x"}}')).toBeNull();
+    expect(control.proposeSeed).not.toHaveBeenCalled();
+  });
+
+  it('mirror role dispatches id-less frames and never returns a response', () => {
+    const res = handleBridgeMessage('{"method":"proposeSeed","params":{"seed":"x"}}', {
+      role: 'mirror',
+    });
+    expect(control.proposeSeed).toHaveBeenCalledWith('x');
+    expect(res).toBeNull();
+  });
+
+  it('mirror role still dispatches id-bearing frames but returns null', () => {
+    const res = handleBridgeMessage('{"id":99,"method":"proposeSeed","params":{"seed":"y"}}', {
+      role: 'mirror',
+    });
+    expect(control.proposeSeed).toHaveBeenCalledWith('y');
+    // 中継は mirror に応答を期待しないので、id があっても返さない。
+    expect(res).toBeNull();
+  });
+
+  it('mirror role ignores broken JSON the same way', () => {
+    expect(handleBridgeMessage('not json', { role: 'mirror' })).toBeNull();
+    expect(handleBridgeMessage('{"id":1}', { role: 'mirror' })).toBeNull();
   });
 });

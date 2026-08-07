@@ -34,6 +34,10 @@ CLI (`scripts/vj-ctl.mjs`) から操縦する。叩いているのは `src/synth
    「シーンは映っているのに `no synth connected`」になる。ここは**ユーザーに頼む**必要がある
    （こちらからブラウザは開けない）。
 
+   サブモニタなど複数台に同じ映像を出したいときは、メイン 1 台を通常どおり
+   `?scene=semantic-synth&bridge=1`（synth、応答を返す）で開き、残りを
+   `?scene=semantic-synth&bridge=1&mirror=1`（表示専用）で開く。mirror は何台でも可。
+
 3. **疎通確認**
 
    ```bash
@@ -42,6 +46,7 @@ CLI (`scripts/vj-ctl.mjs`) から操縦する。叩いているのは `src/synth
 
    - JSON が返る → 準備完了
    - `{"error":"no synth connected"}` → 2 のタブが開いていない / `bridge=1` が付いていない
+     （mirror だけの接続では state 等の応答は返らない。synth が 1 台要る）
    - `{"error":"timeout after 20s"}` や `ECONNREFUSED` → 1 の bridge が起動していない
 
 ## リレー経由で操縦する（Cloudflare Worker）
@@ -60,6 +65,10 @@ CLI (`scripts/vj-ctl.mjs`) から操縦する。叩いているのは `src/synth
 2. `pageUrl` をユーザーに開いてもらう — `?scene=semantic-synth&room=<id>` が付いている必要がある。
    ここは**ユーザーに頼む**しかない（こちらからブラウザは開けない）。
 
+   複数台に同じ映像を出す場合:
+   - メイン（synth、応答を返す 1 台）: `?scene=semantic-synth&room=<id>`
+   - サブモニタ（mirror、何台でも可）: `?scene=semantic-synth&room=<id>&mirror=1`
+
 3. 疎通確認して、以降は**すべてのコマンドに同じ `--url` を付ける**
 
    ```bash
@@ -75,6 +84,8 @@ CLI (`scripts/vj-ctl.mjs`) から操縦する。叩いているのは `src/synth
 - ブラウザ側は `?room=<id>` があればリレーへ、`?bridge=1` だけならローカル bridge へ繋ぐ。
   両方あるときは **room が優先**。
 - リレーは同一オリジンの `wss://` なので mixed content にならず、`pnpm bridge` も不要。
+- **synth は 1 台のまま。** mirror は表示専用で `findSynth` に入らないので、state 等の
+  応答経路は壊れない。新しい synth が来ても mirror は切断されない。
 
 ## コマンド
 

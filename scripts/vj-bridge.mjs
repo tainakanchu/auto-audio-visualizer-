@@ -8,11 +8,17 @@
  * control.ts の surface が増えても、このファイルは触らずに済む。
  *
  * プロトコル（JSON テキストフレーム）:
- *   client → server  {"hello":"synth"} | {"hello":"ctl"}
+ *   client → server  {"hello":"synth"} | {"hello":"ctl"} | {"hello":"mirror"}
  *   ctl    → server  {"id":<ctlId>,"method":"<name>","params":<object|undefined>}
- *   server → synth   {"id":<serverId>,"method":...,"params":...}
+ *   server → synth   {"id":<serverId>,"method":...,"params":...}   （応答を期待）
+ *   server → mirror  {"method":...,"params":...}                   （片道・id 無し）
  *   synth  → server  {"id":<serverId>,"result":<any>} | {"id":<serverId>,"error":"<message>"}
+ *   mirror → server  id 付きなら {"id":...,"error":"mirror is receive-only"}、それ以外は無視
  *   server → ctl     {"id":<ctlId>,"result":...} | {"id":<ctlId>,"error":...}
+ *
+ * mirror は表示専用。ctl コマンドは synth へ送ると同時に接続中の全 mirror へ
+ * id 無しでブロードキャストする。応答の正本は synth 1 台。新しい synth が来ても
+ * mirror は切らない。mirror 0 台のときは従来と完全に同一。
  */
 import { WebSocket, WebSocketServer } from 'ws';
 
@@ -47,6 +53,12 @@ const wss = new WebSocketServer({ host: '127.0.0.1', port });
 let synth = null;
 
 /**
+ * 表示専用クライアント。何台いてもよい。応答は返さず、ctl コマンドの
+ * 片道ブロードキャストだけを受け取る。synth の差し替え対象にもならない。
+ */
+const mirrors = new Set();
+
+/**
  * serverId → { socket, ctlId, timer }。ctl の id 空間は接続ごとに独立なので、
  * そのまま synth へ流すと別 ctl の id と衝突する。中継側で採番し直して覚える。
  */
@@ -78,6 +90,7 @@ function handleCtlRequest(socket, msg) {
     return;
   }
   if (!synth || synth.readyState !== WebSocket.OPEN) {
+    // synth が居ないときは従来どおり。mirror だけ居ても応答の正本が無い。
     send(socket, { id: msg.id, error: 'no synth connected' });
     return;
   }
@@ -90,6 +103,11 @@ function handleCtlRequest(socket, msg) {
   pending.set(serverId, { socket, ctlId: msg.id, timer });
   // params が undefined なら JSON.stringify がキーごと落とす。仕様どおり。
   send(synth, { id: serverId, method: msg.method, params: msg.params });
+  // synth が居るときだけ mirror にも同じコマンドを片道で配る（応答は synth だけ）。
+  // id を付けないことで mirror 側が「応答を返す」経路に乗らない。
+  for (const m of mirrors) {
+    send(m, { method: msg.method, params: msg.params });
+  }
 }
 
 function handleSynthResponse(msg) {
@@ -125,6 +143,7 @@ wss.on('connection', (socket) => {
         role = 'synth';
         if (synth && synth !== socket) {
           // Vite の HMR やタブの開き直しで古い接続が残ることがある。
+          // mirror は表示専用なのでここでは絶対に切らない。
           synth.close(4000, 'replaced by a newer synth');
         }
         synth = socket;
@@ -132,6 +151,10 @@ wss.on('connection', (socket) => {
       } else if (msg.hello === 'ctl') {
         role = 'ctl';
         log('ctl connected');
+      } else if (msg.hello === 'mirror') {
+        role = 'mirror';
+        mirrors.add(socket);
+        log('mirror connected');
       }
       return;
     }
@@ -145,6 +168,12 @@ wss.on('connection', (socket) => {
 
     if (role === 'synth') {
       handleSynthResponse(msg);
+    } else if (role === 'mirror') {
+      // 表示専用。コマンドを送ってきても実行も中継もしない。
+      // id 付きなら呼び出し側に気付けるよう理由を返し、id 無しは黙って捨てる。
+      if (typeof msg.id === 'number') {
+        send(socket, { id: msg.id, error: 'mirror is receive-only' });
+      }
     } else {
       handleCtlRequest(socket, msg);
     }
@@ -165,6 +194,9 @@ wss.on('connection', (socket) => {
         pending.delete(serverId);
       }
       log('ctl disconnected');
+    } else if (role === 'mirror') {
+      mirrors.delete(socket);
+      log('mirror disconnected');
     }
   });
 

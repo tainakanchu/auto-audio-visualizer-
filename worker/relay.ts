@@ -9,25 +9,33 @@ import type { Env } from './env';
  * この中継は「どの ctl の要求か」を覚えて応答を返すだけの郵便局に徹する。
  *
  * プロトコル（JSON テキストフレーム）は vj-bridge.mjs と完全に同一:
- *   client → server  {"hello":"synth"} | {"hello":"ctl"}
+ *   client → server  {"hello":"synth"} | {"hello":"ctl"} | {"hello":"mirror"}
  *   ctl    → server  {"id":<ctlId>,"method":"<name>","params":<object|undefined>}
- *   server → synth   {"id":<serverId>,"method":...,"params":...}
+ *   server → synth   {"id":<serverId>,"method":...,"params":...}   （応答を期待）
+ *   server → mirror  {"method":...,"params":...}                   （片道・id 無し）
  *   synth  → server  {"id":<serverId>,"result":<any>} | {"id":<serverId>,"error":"<message>"}
+ *   mirror → server  id 付きなら {"id":...,"error":"mirror is receive-only"}、それ以外は無視
  *   server → ctl     {"id":<ctlId>,"result":...} | {"id":<ctlId>,"error":...}
+ *
+ * mirror は表示専用の受信クライアント。ctl コマンドは synth に送ると同時に
+ * 接続中の全 mirror へ id 無しでブロードキャストする。応答の一意性は synth 1 台
+ * が担うので、findSynth() は mirror を無視する。新しい synth が来ても mirror は
+ * 切らない（逆に mirror が何台いても synth は切られない）。mirror 0 台のとき
+ * の挙動は従来と完全に同一。
  *
  * ローカル版との唯一の構造的な違いは **WebSocket Hibernation API を使う**こと。
  * VJ の中継は「接続しっぱなしで、たまにしか喋らない」典型的な形なので、無通信の
  * 間に DO をメモリから落とせないと課金も安定性も割に合わない。ただし休止すると
- * クラスのフィールド（ローカル版でいう `synth` / `pending` / `nextServerId`）は
- * 消えるので、中継の維持に要る情報は次の 2 か所に逃がしてある:
+ * クラスのフィールド（ローカル版でいう `synth` / `mirrors` / `pending` /
+ * `nextServerId`）は消えるので、中継の維持に要る情報は次の 2 か所に逃がしてある:
  *
  *   - 接続ごとの状態（role・その接続が抱えている pending・レート制限の窓）
  *     → その WebSocket の serialized attachment
  *   - serverId のカウンタ（巻き戻ると古い pending と衝突する）
  *     → DO の storage
  *
- * 「今 synth は誰か」も、フィールドではなく ctx.getWebSockets() を舐めて
- * attachment の role で判定する。休止から復帰した直後でも同じ答えになる。
+ * 「今 synth は誰か」「mirror は誰か」も、フィールドではなく ctx.getWebSockets()
+ * を舐めて attachment の role で判定する。休止から復帰した直後でも同じ答えになる。
  */
 
 /** synth の応答を待つ上限。ローカル版（vj-bridge.mjs）と同じ 15 秒。 */
@@ -46,7 +54,7 @@ const MAX_PENDING_PER_CTL = 64;
 /** serverId カウンタの storage キー。 */
 const NEXT_SERVER_ID_KEY = 'nextServerId';
 
-type Role = 'synth' | 'ctl';
+type Role = 'synth' | 'ctl' | 'mirror';
 
 interface PendingEntry {
   /** ctl 側の id 空間での id。応答を返すときはこれに戻す。 */
@@ -97,7 +105,7 @@ function readAttachment(ws: WebSocket): Attachment {
   if (typeof raw !== 'object' || raw === null) return freshAttachment(0);
   const a = raw as Partial<Attachment>;
   return {
-    role: a.role === 'synth' || a.role === 'ctl' ? a.role : null,
+    role: a.role === 'synth' || a.role === 'ctl' || a.role === 'mirror' ? a.role : null,
     pending: typeof a.pending === 'object' && a.pending !== null ? a.pending : {},
     windowStart: typeof a.windowStart === 'number' ? a.windowStart : 0,
     count: typeof a.count === 'number' ? a.count : 0,
@@ -248,6 +256,7 @@ export class RelayRoom extends DurableObject<Env> {
     }
 
     if (att.role === 'synth') this.handleSynthResponse(frame);
+    else if (att.role === 'mirror') this.handleMirrorMessage(ws, frame);
     else await this.handleCtlRequest(ws, att, frame);
   }
 
@@ -277,7 +286,7 @@ export class RelayRoom extends DurableObject<Env> {
     if (hello === 'synth') {
       // 映像を出しているタブは 1 枚だけを正とする（複数あるとどこに届いたか
       // 分からない）。タブの開き直しで古い接続が残ることがあるので、新しい方を
-      // 採って古い方を蹴る。
+      // 採って古い方を蹴る。mirror は表示専用なのでここでは絶対に切らない。
       for (const other of this.ctx.getWebSockets()) {
         if (other === ws) continue;
         if (readAttachment(other).role !== 'synth') continue;
@@ -286,6 +295,9 @@ export class RelayRoom extends DurableObject<Env> {
       att.role = 'synth';
     } else if (hello === 'ctl') {
       att.role = 'ctl';
+    } else if (hello === 'mirror') {
+      // 表示専用。何台いてもよく、synth の差し替え対象にもならない。
+      att.role = 'mirror';
     }
     // 知らない hello は無視する（role は未確定のまま）。
   }
@@ -299,6 +311,7 @@ export class RelayRoom extends DurableObject<Env> {
 
     const synth = this.findSynth();
     if (synth === null) {
+      // synth が居ないときは従来どおり。mirror だけ居ても応答の正本が無い。
       send(ws, { id: frame.id, error: 'no synth connected' });
       return;
     }
@@ -314,7 +327,21 @@ export class RelayRoom extends DurableObject<Env> {
     };
     // params が undefined なら JSON.stringify がキーごと落とす。仕様どおり。
     send(synth, { id: serverId, method: frame.method, params: frame.params });
+    // synth が居るときだけ mirror にも同じコマンドを片道で配る（応答は synth だけ）。
+    // id を付けないことで mirror 側が「応答を返す」経路に乗らない。
+    this.broadcastToMirrors({ method: frame.method, params: frame.params });
     await this.armSweep();
+  }
+
+  /**
+   * mirror は表示専用。コマンドを送ってきても実行も中継もしない。
+   * id 付きなら「receive-only」と返して呼び出し側に気付けるようにし、
+   * id 無しは返す先が無いので黙って捨てる。
+   */
+  private handleMirrorMessage(ws: WebSocket, frame: Frame): void {
+    if (typeof frame.id === 'number') {
+      send(ws, { id: frame.id, error: 'mirror is receive-only' });
+    }
   }
 
   private handleSynthResponse(frame: Frame): void {
@@ -348,11 +375,19 @@ export class RelayRoom extends DurableObject<Env> {
   // helpers
   // -------------------------------------------------------------------------
 
+  /** 応答を返す正本の synth。mirror は表示専用なのでここには入らない。 */
   private findSynth(): WebSocket | null {
     for (const ws of this.ctx.getWebSockets()) {
       if (readAttachment(ws).role === 'synth' && isOpen(ws)) return ws;
     }
     return null;
+  }
+
+  /** 接続中の表示専用クライアントへ片道ブロードキャストする。 */
+  private broadcastToMirrors(payload: { method: string; params: unknown }): void {
+    for (const ws of this.ctx.getWebSockets()) {
+      if (readAttachment(ws).role === 'mirror' && isOpen(ws)) send(ws, payload);
+    }
   }
 
   private async allocateServerId(): Promise<number> {
