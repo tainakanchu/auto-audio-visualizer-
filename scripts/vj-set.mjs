@@ -62,12 +62,15 @@ const COUNT_LIMITS = {
 };
 
 /** 由来: src/synth/validate.ts の AUDIO_SOURCES。 */
-const AUDIO_SOURCES = new Set([
+export const AUDIO_SOURCES = new Set([
   'audio:bass',
   'audio:mid',
   'audio:treble',
   'audio:level',
   'audio:beat',
+  'audio:beatIntensity',
+  'audio:gridPulse',
+  'audio:barPulse',
   'audio:barPhase',
   'audio:beatPhase',
 ]);

@@ -29,7 +29,7 @@ const COUNT_LIMITS: Record<GeneratorCategory, { min: number; max: number }> = {
  * 落ちる Patch」が作れてしまうし、ここだけ狭いと拍に同期した変調（音に反応
  * している感の主役）を Patch に書けない。
  */
-const AUDIO_SOURCES = new Set([
+export const AUDIO_SOURCES = new Set([
   'audio:bass',
   'audio:mid',
   'audio:treble',
