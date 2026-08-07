@@ -21,12 +21,23 @@ const COUNT_LIMITS: Record<GeneratorCategory, { min: number; max: number }> = {
   material: { min: 1, max: 1 },
 };
 
+/**
+ * Route の source に書ける audio:* の一覧。
+ *
+ * **modulation.ts の `resolveSourceValue` が解決できる集合と一致させること。**
+ * ここだけ広いと「検証は通るのにデッキ生成で UnknownModulationSourceError で
+ * 落ちる Patch」が作れてしまうし、ここだけ狭いと拍に同期した変調（音に反応
+ * している感の主役）を Patch に書けない。
+ */
 const AUDIO_SOURCES = new Set([
   'audio:bass',
   'audio:mid',
   'audio:treble',
   'audio:level',
   'audio:beat',
+  'audio:beatIntensity',
+  'audio:gridPulse',
+  'audio:barPulse',
   'audio:barPhase',
   'audio:beatPhase',
 ]);

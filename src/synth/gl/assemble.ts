@@ -10,6 +10,21 @@ import { resolvePreludes } from './preludes';
 
 export const SEED_UNIFORM = 'uSeed';
 
+/**
+ * Patch 共通のオーディオ反応の強さ。
+ *
+ * Generator は 106 個中 8 個しか音の uniform を読まないので、Generator 任せに
+ * すると「音に反応している感が無い Patch」が大量に出る。どんな組み合わせを
+ * 引いても最低限は音に反応するように、main() の中で全 Patch 共通に効かせる。
+ * 演出の主役ではなく下地なので、いずれも控えめな値にしてある。
+ */
+/** 拍の頭で画面を寄せる量（0.05 = 5% ズームイン）。 */
+const PUNCH_ZOOM = 0.05;
+/** 拍の頭で色を持ち上げる量。プリマルチプライドなので軽いグローになる。 */
+const PUNCH_LIFT = 0.25;
+/** 無音時に画面を引く量（0.06 = 6% ズームアウト）。音量で息をするように見える。 */
+const ENERGY_ZOOM = 0.06;
+
 /** Sanitize opId so the result is a valid GLSL identifier fragment. */
 export function sanitizeId(id: string): string {
   return id.replace(/[^A-Za-z0-9_]/g, '_');
@@ -184,6 +199,9 @@ export function assemblePatch(
   lines.push('uniform vec2 uRes;');
   lines.push('uniform float uTime;');
   lines.push('uniform float uBass, uMid, uTreble, uLevel, uBeat;');
+  // uPunch / uEnergy は「音そのもの」ではなく、無音でゲートされた演出用の量。
+  // uBeat と違ってブレイク中のフリーホイールでは動かない（scene 側でゲート済み）。
+  lines.push('uniform float uPunch, uEnergy;');
   lines.push('uniform float uFade;');
   lines.push(`uniform uint ${SEED_UNIFORM};`);
   lines.push('');
@@ -258,6 +276,14 @@ export function assemblePatch(
   lines.push('  vec2 p = (uv - 0.5) * vec2(aspect, 1.0);');
   lines.push('');
 
+  lines.push('  // 0. shared audio response — every patch reacts, whatever it picked');
+  lines.push(
+    `  p *= (1.0 + ${ENERGY_ZOOM.toFixed(3)} * (1.0 - uEnergy)) * (1.0 - ${PUNCH_ZOOM.toFixed(
+      3,
+    )} * uPunch);`,
+  );
+  lines.push('');
+
   lines.push('  // 1. coord modifiers (modifier + output:vector) in patch order');
   for (const r of coordMods) {
     lines.push(`  p = ${r.fnName}(p);`);
@@ -296,6 +322,8 @@ export function assemblePatch(
       lines.push(`  fragColor = ${r.fnName}(v, p);`);
     }
   }
+  // rgb だけ持ち上げる。alpha まで触ると OBS 側で透過そのものが拍ごとに揺れる。
+  lines.push(`  fragColor.rgb *= 1.0 + ${PUNCH_LIFT.toFixed(3)} * uPunch;`);
   lines.push('  fragColor *= uFade;');
   lines.push('}');
   lines.push('');

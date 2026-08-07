@@ -192,6 +192,10 @@ export function buildUniformSpecs(
     { name: 'uTreble', kind: '1f', value: 0.5 },
     { name: 'uLevel', kind: '1f', value: 0.5 },
     { name: 'uBeat', kind: '1f', value: 0.5 },
+    // scene 側と同じ関係を保つ: uEnergy は音量、uPunch は拍 × 音量。
+    // 他の音 uniform が 0.5 なのに合わせて 0.5 / 0.5*0.5 に置く。
+    { name: 'uEnergy', kind: '1f', value: 0.5 },
+    { name: 'uPunch', kind: '1f', value: 0.25 },
     { name: 'uFade', kind: '1f', value: 1.0 },
     { name: SEED_UNIFORM, kind: '1ui', value: seedToU32(patch.seed) >>> 0 },
   ];

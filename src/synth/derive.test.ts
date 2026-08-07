@@ -37,14 +37,20 @@ const TEXTURED_IDS = inlineCatalog
   .filter((g) => (g.def.textures?.length ?? 0) > 0)
   .map((g) => g.def.id);
 
-/** Sources used by derive buildRoutes (validate ∩ modulation). */
+/**
+ * Sources used by derive buildRoutes.
+ *
+ * `audio:beatPhase` / `audio:barPhase` は意図的に**含まない**: 無音でも回り
+ * 続けるノコギリ波なので、変調に使っても音に反応したことにならない。
+ * 拍系は無音で 0 に落ちる `audio:beatIntensity` のみ（`audio:gridPulse` は
+ * ブレイク中もフリーホイールするので derive では使わない）。
+ */
 const ROUTE_AUDIO_SOURCES = new Set([
   'audio:bass',
   'audio:mid',
   'audio:treble',
   'audio:level',
-  'audio:beatPhase',
-  'audio:barPhase',
+  'audio:beatIntensity',
 ]);
 
 function defCatalogFrom(catalog = inlineCatalog) {
@@ -69,7 +75,7 @@ describe('synth/derive', () => {
       expect(patch.schemaVersion).toBe(1);
       expect(patch.seed).toBe('default-tier-seed');
       expect(patch.routes.length).toBeGreaterThanOrEqual(1);
-      expect(patch.routes.length).toBeLessThanOrEqual(3);
+      expect(patch.routes.length).toBeLessThanOrEqual(4);
     });
   });
 
@@ -83,18 +89,18 @@ describe('synth/derive', () => {
   });
 
   describe('modulation routes', () => {
-    it('routes length is 0–3 and usually ≥1 with full catalog', () => {
+    it('routes length is 0–4 and usually ≥1 with full catalog', () => {
       let withRoutes = 0;
       for (let i = 0; i < 200; i++) {
         const patch = derivePatch(`routes-len-${i}`, { catalog: inlineCatalog });
         expect(patch.routes.length).toBeGreaterThanOrEqual(0);
-        expect(patch.routes.length).toBeLessThanOrEqual(3);
+        expect(patch.routes.length).toBeLessThanOrEqual(4);
         if (patch.routes.length >= 1) withRoutes += 1;
       }
       expect(withRoutes).toBeGreaterThan(180);
     });
 
-    it('all routes use allowed audio sources, unique targets, finite amount, smoothing in [0.4, 1.6]', () => {
+    it('all routes use allowed audio sources, unique targets, finite amount, plausible smoothing', () => {
       for (let i = 0; i < 100; i++) {
         const patch = derivePatch(`routes-shape-${i}`, { catalog: inlineCatalog });
         const targets = new Set<string>();
@@ -104,9 +110,51 @@ describe('synth/derive', () => {
           targets.add(route.target);
           expect(Number.isFinite(route.amount)).toBe(true);
           expect(route.amount).not.toBe(0);
-          expect(route.smoothing).toBeGreaterThanOrEqual(0.4);
+          // 拍系は 0.05–0.15、帯域系は 0.4–1.6。
+          expect(route.smoothing).toBeGreaterThanOrEqual(0.05);
           expect(route.smoothing).toBeLessThanOrEqual(1.6);
-          expect(route.polarity === 'unipolar' || route.polarity === 'bipolar').toBe(true);
+        }
+      }
+    });
+
+    /**
+     * 「音に反応して画が消える」ことが起きない、という不変条件のテスト。
+     * クラブの大音量下でずっと真っ暗、という事故を構造的に防ぐ。
+     */
+    it('audio can only ever add: every route is unipolar with a positive amount', () => {
+      for (let i = 0; i < 200; i++) {
+        const patch = derivePatch(`routes-additive-${i}`, { catalog: inlineCatalog });
+        for (const route of patch.routes) {
+          expect(route.polarity, `${route.source} → ${route.target}`).toBe('unipolar');
+          expect(route.amount, `${route.source} → ${route.target}`).toBeGreaterThan(0);
+        }
+      }
+    });
+
+    it('never modulates a parameter that can blank the picture', () => {
+      // 上げると絵が消える / 潰れる方向のパラメータ。許可リスト運用なので
+      // ここに挙げたものは自動的に外れるはずだが、代表例を明示的に守る。
+      const BLANKING = new Set([
+        'threshold',
+        'gate',
+        'dropout',
+        'fade',
+        'invert',
+        'breakup',
+        'corruption',
+        'escape',
+        'duty',
+        'litRatio',
+        'openness',
+        'mix',
+        'level',
+        'levels',
+      ]);
+      for (let i = 0; i < 200; i++) {
+        const patch = derivePatch(`routes-safe-${i}`, { catalog: inlineCatalog });
+        for (const route of patch.routes) {
+          const paramId = route.target.slice(route.target.indexOf('.') + 1);
+          expect(BLANKING.has(paramId), `route targets "${paramId}"`).toBe(false);
         }
       }
     });
@@ -132,6 +180,16 @@ describe('synth/derive', () => {
       }
       expect(serials.size).toBeGreaterThan(1);
       expect(sourceIds.size).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  describe('composition.speed (patch motion speed)', () => {
+    it('never exceeds 1: no derived patch moves faster than the old flat rate', () => {
+      for (let i = 0; i < 200; i++) {
+        const { composition } = derivePatch(`comp-speed-${i}`, { catalog: inlineCatalog });
+        expect(composition.speed).toBeGreaterThan(0);
+        expect(composition.speed).toBeLessThanOrEqual(1);
+      }
     });
   });
 
