@@ -107,6 +107,24 @@ export function resolveBridgeUrl(search: string, host: string, protocol: string)
   return `ws://127.0.0.1:${port}`;
 }
 
+/**
+ * URL の query から表示専用（mirror）モードかどうかを決める。
+ *
+ * `mirror=1` / `mirror=true` だけを true にする。`?mirror`（値なし）や不正値は
+ * false。autocycle と同じ作法。mirror は URL 専用・非永続で、bridge / room と
+ * 併用して「同じ中継に表示専用として接続する」用途に使う。
+ */
+export function parseMirrorMode(search: string): boolean {
+  let raw: string | null;
+  try {
+    raw = new URLSearchParams(search).get('mirror');
+  } catch {
+    return false;
+  }
+  if (raw === null) return false;
+  return raw === '1' || raw === 'true';
+}
+
 // ---------------------------------------------------------------------------
 // Message routing
 // ---------------------------------------------------------------------------
@@ -220,8 +238,19 @@ function dispatch(
  * 同期で答えられる method は同期のまま返す（既存の呼び出し側とテストを変えない）。
  * setImage のように待ちがある method だけ Promise を返すので、送信側は
  * Promise.resolve() で受けること。
+ *
+ * `options.role`:
+ * - `'synth'`（既定）… 現行どおり id 必須・応答を返す。
+ * - `'mirror'` … method があれば id 無しでも dispatch し、**常に null** を返す
+ *   （片道受信専用。中継は mirror に id 無しフレームを配る）。Promise の method
+ *   も解決後に null に倒すので、呼び出し側は送らない。
  */
-export function handleBridgeMessage(raw: string): object | null | Promise<object | null> {
+export function handleBridgeMessage(
+  raw: string,
+  options?: { role?: 'synth' | 'mirror' },
+): object | null | Promise<object | null> {
+  const role = options?.role ?? 'synth';
+
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -232,8 +261,10 @@ export function handleBridgeMessage(raw: string): object | null | Promise<object
   if (typeof parsed !== 'object' || parsed === null) return null;
 
   const frame = parsed as { id?: unknown; method?: unknown; params?: unknown };
-  if (typeof frame.id !== 'number' || typeof frame.method !== 'string') return null;
-  const id = frame.id;
+  if (typeof frame.method !== 'string') return null;
+
+  // synth は応答の正本なので id が要る。mirror は片道なので id 無しでも実行する。
+  if (role === 'synth' && typeof frame.id !== 'number') return null;
 
   const rawParams = frame.params;
   const params =
@@ -241,6 +272,23 @@ export function handleBridgeMessage(raw: string): object | null | Promise<object
       ? (rawParams as Record<string, unknown>)
       : undefined;
 
+  if (role === 'mirror') {
+    // 表示専用: 実行するだけで応答は返さない。例外も接続を落とさないために飲む。
+    try {
+      const out = dispatch(frame.method, params);
+      if (out instanceof Promise) {
+        return out.then(
+          () => null,
+          () => null,
+        );
+      }
+    } catch {
+      // swallow — mirror はエラーを返す先も持たない。
+    }
+    return null;
+  }
+
+  const id = frame.id as number;
   const toFrame = (out: DispatchResult): object =>
     out.ok ? { id, result: out.result } : { id, error: out.error };
 
@@ -269,11 +317,15 @@ export function handleBridgeMessage(raw: string): object | null | Promise<object
 export function initBridgeClient(): BridgeClientHandle | null {
   // location が無い環境（Node のテストなど）でも落ちないように読む。
   const loc = globalThis.location as Location | undefined;
-  const resolved = resolveBridgeUrl(loc?.search ?? '', loc?.host ?? '', loc?.protocol ?? '');
+  const search = loc?.search ?? '';
+  const resolved = resolveBridgeUrl(search, loc?.host ?? '', loc?.protocol ?? '');
   if (resolved === null) return null;
   // 下のクロージャから読むので、null を落とした形で束ね直す（クロージャ越しには
   // 絞り込みが効かない）。
   const url: string = resolved;
+  // mirror は URL 専用・非永続。bridge / room と併用して表示専用接続になる。
+  const isMirror = parseMirrorMode(search);
+  const bridgeRole: 'synth' | 'mirror' = isMirror ? 'mirror' : 'synth';
 
   const SocketCtor = globalThis.WebSocket;
   if (typeof SocketCtor !== 'function') return null;
@@ -321,16 +373,18 @@ export function initBridgeClient(): BridgeClientHandle | null {
       downLogged = false;
       console.info(`[vj-bridge] connected to ${url}`);
       // 中継サーバはロール別にソケットを仕分けるので、まず名乗る。
-      ws.send(JSON.stringify({ hello: 'synth' }));
+      // mirror は表示専用で応答を返さない（中継は id 無しフレームを配る）。
+      ws.send(JSON.stringify({ hello: bridgeRole }));
     };
 
     ws.onmessage = (ev: MessageEvent): void => {
       if (typeof ev.data !== 'string') return;
-      const response = handleBridgeMessage(ev.data);
+      const response = handleBridgeMessage(ev.data, { role: bridgeRole });
       if (response === null) return;
       if (response instanceof Promise) {
         void response.then((resolved) => {
           // 待っている間に切れていることがあるので、送る前に現行ソケットか確かめる。
+          // mirror は常に null を返すのでここには来ないが、同じ経路で安全に扱う。
           if (resolved !== null && socket === ws) ws.send(JSON.stringify(resolved));
         });
         return;

@@ -174,12 +174,15 @@ Generator は 105 個中 8 個しか音の uniform を読まないので、**画
 | `device` | `device=<deviceId>` | 入力デバイス id を指定 |
 | `overlay` | `overlay=rings` | シーンを2層合成する（下＝`scene`、上＝`overlay`）。未指定/`none`/`off`/`0` で無効 |
 | `blend` | `blend=screen` | オーバーレイ合成モード（`normal` / `screen` / `multiply` / `overlay` / `difference` / `exclusion` / `color-dodge` / `hard-light` / `lighten` / `darken`）。オーバーレイ有効時のみ。未指定は `normal`（従来どおり） |
+| `mirror` | `mirror=1` | 中継に表示専用（mirror）として接続する。`room` または `bridge` と併用。応答は返さず同じコマンドを映像に反映するだけ |
 
 例: 透過背景・パネル非表示・パーティクルシーンで起動
 
 ```
 http://localhost:5173/?scene=particles&bg=transparent&ui=hide&gain=2
 ```
+
+複数台の端末に同じ映像を出したいときは、1 台を通常の synth（`room` / `bridge` のみ）として接続し、残りを `mirror=1` 付きで開きます。mirror は表示専用で何台でも接続でき、中継からのコマンドを映像に反映するだけで応答は返しません。
 
 ### シーンオーバーレイ（2層合成）
 
