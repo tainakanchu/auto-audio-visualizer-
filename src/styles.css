@@ -63,6 +63,11 @@ html.cursor-hidden * {
 #vj-canvas-gl {
   z-index: 0;
 }
+/* When a GL scene is drawn as the overlay layer it must composite above the
+   2D base layer, so it is lifted out of its default position. */
+#vj-canvas-gl.canvas-lifted {
+  z-index: 2;
+}
 .canvas-hidden {
   display: none;
 }
