@@ -673,3 +673,81 @@ export function derivePatch(seed: string, opts: DeriveOptions): VisualPatch {
       `(validate=${validateIssues.length}, budget=${budgetIssues.length})`,
   );
 }
+
+export interface RerollOptions {
+  /** 使う Generator カタログ。derivePatch に渡すのと同じもの。 */
+  catalog: InlineGeneratorCatalog;
+  /** パラメータを引き直すか（既定 true）。 */
+  parameters?: boolean;
+  /** audio→param route を引き直すか（既定 true）。 */
+  routes?: boolean;
+  /** palette を引き直すか（既定 true）。 */
+  palette?: boolean;
+  /** composition（symmetry/scale/speed）を引き直すか（既定 true）。 */
+  composition?: boolean;
+}
+
+/**
+ * 既存の Patch から**トポロジ（operator の id / generatorId / generatorVersion /
+ * 並び順）だけ固定**し、それ以外（パラメータ・route・palette・composition）を
+ * 新しい seed で引き直す。
+ *
+ * seed ガチャ（`derivePatch`）はトポロジごと変わるので、シードを引き直すたびに
+ * 「拍で何が起きるか」まで変わってしまう —
+ * `src/synth/gl/reactions.ts` の `selectReactions` は `patch.seed` ではなく
+ * `topologyKey(operators)` だけを見て拍リアクションを選ぶため。トポロジさえ
+ * 保てば、細部（色・動き・変調のかかり方）だけを変えてもリアクションの構成は
+ * 変わらない。「同じ構成のまま雰囲気だけ変えたい」を叶えるのがこの関数。
+ *
+ * 各カテゴリの既定は独立に true（省略時は全部引き直す）。どれを引き直さないかは
+ * **呼び出し側の責務**——このオプション自体には「1つでも指定したら残りは false」
+ * のような推論は無い（vj-tweak.mjs の `--reroll=palette` のように部分指定したい
+ * 呼び出し側が、明示的に他の3つへ `false` を渡す）。
+ *
+ * 生成ロジックは一切再実装しない。パラメータは `buildOperator`（= `pickParameter`、
+ * min/max/kind を守る）、route は `withRoutes`（= `buildRoutes`。
+ * `SAFE_TARGET_PARAMS` / `MOTION_RATIO_MAX` / 強制 unipolar / audio source
+ * allow-list を含む）をそのまま呼ぶ。qualityTier / schemaVersion / images は
+ * `{ ...patch, ... }` のスプレッドで無変更のまま素通しする。
+ */
+export function rerollPatch(patch: VisualPatch, seed: string, opts: RerollOptions): VisualPatch {
+  const rerollParameters = opts.parameters ?? true;
+  const rerollRoutes = opts.routes ?? true;
+  const rerollPalette = opts.palette ?? true;
+  const rerollComposition = opts.composition ?? true;
+
+  const defCatalog = createCatalog(opts.catalog.all().map((g) => g.def));
+
+  const operators: VisualOperator[] = patch.operators.map((op) => {
+    if (!rerollParameters) return { ...op, parameters: { ...op.parameters } };
+    const gen = opts.catalog.get(op.generatorId);
+    if (!gen) {
+      throw new Error(
+        `rerollPatch: generator "${op.generatorId}" (operator "${op.id}") not found in catalog`,
+      );
+    }
+    return buildOperator(seed, op.id, gen);
+  });
+
+  let next: VisualPatch = {
+    ...patch,
+    seed,
+    operators,
+    palette: rerollPalette ? buildPalette(seed) : patch.palette,
+    composition: rerollComposition ? buildComposition(seed) : patch.composition,
+    routes: patch.routes,
+  };
+
+  if (rerollRoutes) {
+    next = withRoutes(next, defCatalog);
+  }
+
+  const issues = validatePatch(next, defCatalog);
+  if (issues.length > 0) {
+    throw new Error(
+      `rerollPatch: reroll produced an invalid patch for seed ${JSON.stringify(seed)} ` +
+        `(${issues.length} issue(s): ${issues.map((i) => i.message).join('; ')})`,
+    );
+  }
+  return next;
+}
