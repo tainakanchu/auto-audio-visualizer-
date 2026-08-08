@@ -4,8 +4,14 @@ import type { VisualPatch } from './types';
 export const CURRENT_SCHEMA_VERSION = 1;
 
 const modulationPolaritySchema = v.picklist(['unipolar', 'bipolar']);
-const paletteModeSchema = v.picklist(['mono', 'analogous', 'complementary', 'triadic', 'rainbow']);
-const qualityTierSchema = v.picklist(['low', 'medium', 'high']);
+export const paletteModeSchema = v.picklist([
+  'mono',
+  'analogous',
+  'complementary',
+  'triadic',
+  'rainbow',
+]);
+export const qualityTierSchema = v.picklist(['low', 'medium', 'high']);
 
 const paramValueSchema = v.union([v.number(), v.string(), v.boolean()]);
 
@@ -24,14 +30,14 @@ const modulationRouteSchema = v.object({
   smoothing: v.pipe(v.number(), v.finite(), v.minValue(0)),
 });
 
-const paletteSpecSchema = v.object({
+export const paletteSpecSchema = v.object({
   mode: paletteModeSchema,
   hueOffset: v.pipe(v.number(), v.finite(), v.minValue(0), v.maxValue(360)),
   saturation: v.pipe(v.number(), v.finite(), v.minValue(0), v.maxValue(100)),
   lightness: v.pipe(v.number(), v.finite(), v.minValue(0), v.maxValue(100)),
 });
 
-const compositionSpecSchema = v.object({
+export const compositionSpecSchema = v.object({
   symmetry: v.pipe(v.number(), v.finite()),
   scale: v.pipe(v.number(), v.finite()),
   speed: v.pipe(v.number(), v.finite()),

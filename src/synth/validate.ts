@@ -7,14 +7,14 @@ export interface ValidationIssue {
   path?: string;
 }
 
-const CATEGORY_RANK: Record<GeneratorCategory, number> = {
+export const CATEGORY_RANK: Record<GeneratorCategory, number> = {
   source: 0,
   field: 1,
   modifier: 2,
   material: 3,
 };
 
-const COUNT_LIMITS: Record<GeneratorCategory, { min: number; max: number }> = {
+export const COUNT_LIMITS: Record<GeneratorCategory, { min: number; max: number }> = {
   source: { min: 1, max: 2 },
   field: { min: 0, max: 2 },
   modifier: { min: 1, max: 3 },
@@ -29,7 +29,7 @@ const COUNT_LIMITS: Record<GeneratorCategory, { min: number; max: number }> = {
  * 落ちる Patch」が作れてしまうし、ここだけ狭いと拍に同期した変調（音に反応
  * している感の主役）を Patch に書けない。
  */
-const AUDIO_SOURCES = new Set([
+export const AUDIO_SOURCES = new Set([
   'audio:bass',
   'audio:mid',
   'audio:treble',
