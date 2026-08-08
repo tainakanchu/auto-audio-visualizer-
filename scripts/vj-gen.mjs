@@ -37,9 +37,11 @@ const VJ_CTL_PATH = process.env.VJ_CTL_PATH ?? `${import.meta.dirname}/vj-ctl.mj
 /**
  * catalog キャッシュはスクリプト自身と同じディレクトリに置く。
  * vj-tweak.mjs と同じファイルを共有する（同じディレクトリに両スクリプトが
- * 置かれる前提。片方が更新したキャッシュをもう片方もそのまま使える）。
+ * 置かれる前提。片方が更新したキャッシュをもう片方もそのまま使える）。env で上書き可能
+ * （vj-recipe.mjs apply が子プロセスとして呼ぶ際、テストから隔離パスを渡せるように）。
  */
-const CATALOG_CACHE_PATH = `${import.meta.dirname}/.vj-catalog-cache.json`;
+const CATALOG_CACHE_PATH =
+  process.env.VJ_CATALOG_CACHE_PATH ?? `${import.meta.dirname}/.vj-catalog-cache.json`;
 
 /** 気分語の語彙。ユーザーが後で手編集して語を増やしていく前提の、素の { 語: entry } マップ。 */
 const VOCAB_PATH = `${import.meta.dirname}/vj-vocab.json`;

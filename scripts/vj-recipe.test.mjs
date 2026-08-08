@@ -3,7 +3,7 @@
 // vj-ctl.mjs をネットワーク不要のスタブに差し替え、実際の CLI を子プロセスとして
 // 起動して stdout/stderr/exit code を検証する。ライブの VJ_URL には一切接続しない。
 import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -11,7 +11,6 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 
 const SCRIPT_DIR = fileURLToPath(new URL('.', import.meta.url));
 const VJ_RECIPE_PATH = join(SCRIPT_DIR, 'vj-recipe.mjs');
-const REAL_CACHE_PATH = join(SCRIPT_DIR, '.vj-catalog-cache.json');
 
 // vj-tweak.test.mjs と同じ最小カタログ。vj-gen.mjs（base patch 生成）・
 // vj-recipe.mjs（tweaks 適用）の両方がこの一枚だけを見ればいいように、
@@ -79,7 +78,6 @@ const BAD_RECIPE = {
 let tmpDir;
 let stubPath;
 let recipesDir;
-let savedCache; // Buffer | undefined — undefined means "本物のキャッシュは無かった"
 
 beforeEach(() => {
   tmpDir = mkdtempSync(join(tmpdir(), 'vj-recipe-test-'));
@@ -90,28 +88,10 @@ beforeEach(() => {
   mkdirSync(recipesDir);
   writeFileSync(join(recipesDir, 'fixture-recipe.json'), JSON.stringify(FIXTURE_RECIPE, null, 2));
   writeFileSync(join(recipesDir, 'bad-recipe.json'), JSON.stringify(BAD_RECIPE, null, 2));
-
-  // vj-recipe.mjs apply は --refresh-catalog 無指定時に本物の
-  // scripts/.vj-catalog-cache.json を読みに行きうる（テストはフィクスチャ catalog を
-  // 強制するため常に --refresh-catalog を付けるが、念のため退避しておく）。
-  try {
-    savedCache = readFileSync(REAL_CACHE_PATH);
-  } catch {
-    savedCache = undefined;
-  }
 });
 
 afterEach(() => {
   rmSync(tmpDir, { recursive: true, force: true });
-  if (savedCache === undefined) {
-    try {
-      rmSync(REAL_CACHE_PATH);
-    } catch {
-      // 元々無かったので、無ければ何もしなくてよい
-    }
-  } else {
-    writeFileSync(REAL_CACHE_PATH, savedCache);
-  }
 });
 
 function runVjRecipe(args, { withNetworkStub = true } = {}) {
@@ -192,20 +172,31 @@ describe('vj-recipe.mjs apply', () => {
 // --url も VJ_URL も渡さない実行。runVjRecipe は常に VJ_URL を付けるので、専用の
 // ヘルパーで process.env から VJ_URL を確実に取り除く（withNetworkStub と同様、
 // VJ_CTL_PATH は存在しないパスにして「叩かれたら見える化する」ようにしておく）。
-function runVjRecipeWithoutUrl(args) {
+// extraEnv で個別テストごとの env 上書き（VJ_CATALOG_CACHE_PATH 等）を追加できる。
+function runVjRecipeWithoutUrl(args, extraEnv = {}) {
   const env = {
     ...process.env,
     VJ_RECIPES_DIR: recipesDir,
     VJ_CTL_PATH: join(tmpDir, 'does-not-exist.mjs'),
+    ...extraEnv,
   };
   delete env.VJ_URL;
   return spawnSync(process.execPath, [VJ_RECIPE_PATH, ...args], { encoding: 'utf8', env });
 }
 
 describe('vj-recipe.mjs apply --dry-run without --url/VJ_URL (catalog cache)', () => {
+  // 本物の scripts/.vj-catalog-cache.json には一切触れず、各テストが自分の tmpDir
+  // 配下だけに置く隔離パスを VJ_CATALOG_CACHE_PATH 経由で渡す。vitest はテスト
+  // ファイルを並列実行するため、vj-gen.test.mjs / vj-tweak.test.mjs が同じ実ファイルの
+  // beforeEach/afterEach で退避・上書き・削除を行っていると競合しうる — mkdtempSync が
+  // 呼び出しごとに一意なディレクトリを作るので、この隔離により衝突は起きない。
+
   it('succeeds offline (no network) when a catalog cache file exists', () => {
-    writeFileSync(REAL_CACHE_PATH, JSON.stringify(FIXTURE_CATALOG));
-    const result = runVjRecipeWithoutUrl(['apply', 'fixture-recipe', '--dry-run']);
+    const cachePath = join(tmpDir, 'catalog-cache.json');
+    writeFileSync(cachePath, JSON.stringify(FIXTURE_CATALOG));
+    const result = runVjRecipeWithoutUrl(['apply', 'fixture-recipe', '--dry-run'], {
+      VJ_CATALOG_CACHE_PATH: cachePath,
+    });
     expect(result.status).toBe(0);
     const draft = JSON.parse(result.stdout);
     expect(draft.seed).toBe('fixture-seed-v1');
@@ -214,24 +205,22 @@ describe('vj-recipe.mjs apply --dry-run without --url/VJ_URL (catalog cache)', (
   });
 
   it('fails with exit 1 and a clear hint when no cache exists', () => {
-    try {
-      rmSync(REAL_CACHE_PATH);
-    } catch {
-      // 元々無かったので OK
-    }
-    const result = runVjRecipeWithoutUrl(['apply', 'fixture-recipe', '--dry-run']);
+    // 作成しない = 存在しないことが保証された隔離パス（tmpDir はこのテスト専用）。
+    const cachePath = join(tmpDir, 'no-such-cache.json');
+    const result = runVjRecipeWithoutUrl(['apply', 'fixture-recipe', '--dry-run'], {
+      VJ_CATALOG_CACHE_PATH: cachePath,
+    });
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(/--dry-run でも catalog が必要/);
   });
 
   it('still requires --url when --refresh-catalog is combined with --dry-run', () => {
-    writeFileSync(REAL_CACHE_PATH, JSON.stringify(FIXTURE_CATALOG));
-    const result = runVjRecipeWithoutUrl([
-      'apply',
-      'fixture-recipe',
-      '--dry-run',
-      '--refresh-catalog',
-    ]);
+    const cachePath = join(tmpDir, 'catalog-cache.json');
+    writeFileSync(cachePath, JSON.stringify(FIXTURE_CATALOG));
+    const result = runVjRecipeWithoutUrl(
+      ['apply', 'fixture-recipe', '--dry-run', '--refresh-catalog'],
+      { VJ_CATALOG_CACHE_PATH: cachePath },
+    );
     expect(result.status).toBe(1);
     expect(result.stderr).toMatch(/--refresh-catalog/);
   });

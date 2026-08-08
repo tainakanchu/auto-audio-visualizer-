@@ -58,8 +58,9 @@ const VJ_TWEAK_PATH = process.env.VJ_TWEAK_PATH ?? `${import.meta.dirname}/vj-tw
 /** recipe ファイルの置き場所。既定はリポジトリ直下の recipes/。env でテスト用に差し替え可能。 */
 const RECIPES_DIR = process.env.VJ_RECIPES_DIR ?? `${import.meta.dirname}/../recipes`;
 
-/** catalog キャッシュ。vj-gen.mjs / vj-tweak.mjs と同じファイルを共有する。 */
-const CATALOG_CACHE_PATH = `${import.meta.dirname}/.vj-catalog-cache.json`;
+/** catalog キャッシュ。vj-gen.mjs / vj-tweak.mjs と同じファイルを共有する。env で上書き可能。 */
+const CATALOG_CACHE_PATH =
+  process.env.VJ_CATALOG_CACHE_PATH ?? `${import.meta.dirname}/.vj-catalog-cache.json`;
 
 /**
  * apply --dry-run で catalog キャッシュが使えるときに vj-gen.mjs 子プロセスへ渡す
