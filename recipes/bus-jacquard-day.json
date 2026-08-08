@@ -1,0 +1,19 @@
+{
+  "name": "bus-jacquard-day",
+  "mood": ["花布", "台湾", "生活感", "さわやか"],
+  "seed": "bus-jacquard-day-v1",
+  "tweaks": [
+    "src0:=busJacquard",
+    "src0.scale=5",
+    "src0.switchRate=0.12",
+    "src0.mix=0.7",
+    "mat0:=sunbleachedTarp",
+    "mat0.fade=0.55",
+    "mat0.creases=0.4",
+    "palette.hueOffset=340",
+    "palette.saturation=40",
+    "palette.lightness=52",
+    "composition.speed=0.2"
+  ],
+  "notes": "バス座席の花布。お茶会・昼の漂ウ開場向き。kitsch を全開にせず mix を落とす。"
+}

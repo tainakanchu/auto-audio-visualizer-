@@ -1,0 +1,20 @@
+{
+  "name": "typhoon-edge",
+  "mood": ["台風", "雨", "山", "台湾"],
+  "seed": "typhoon-edge-v1",
+  "tweaks": [
+    "src0:=contour",
+    "fld0:=typhoonShear",
+    "fld0.strength=0.55",
+    "fld0.gustRate=0.4",
+    "fld0.amount=0.35",
+    "mat0:=wetConcrete",
+    "mat0.hue=205",
+    "mat0.sheen=0.45",
+    "palette.hueOffset=215",
+    "palette.saturation=24",
+    "palette.lightness=26",
+    "composition.speed=0.45"
+  ],
+  "notes": "「雨！！！！山！！！！」。amount を上げすぎると眩暈。ピーク前の緊張用。"
+}

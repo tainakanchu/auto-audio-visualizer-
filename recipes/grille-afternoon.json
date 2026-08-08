@@ -1,0 +1,18 @@
+{
+  "name": "grille-afternoon",
+  "mood": ["鉄格子", "台湾", "低彩度", "静か"],
+  "seed": "grille-afternoon-v1",
+  "tweaks": [
+    "src0:=grille",
+    "src0.folds=7",
+    "src0.density=5",
+    "src0.thickness=0.035",
+    "mat0:=humidGalvanized",
+    "mat0.spangle=0.4",
+    "mat0.film=0.5",
+    "palette.saturation=14",
+    "palette.lightness=38",
+    "composition.speed=0.12"
+  ],
+  "notes": "下町の窓格子。地（背景）として長時間置ける。"
+}

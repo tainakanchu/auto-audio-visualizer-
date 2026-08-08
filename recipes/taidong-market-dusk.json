@@ -1,0 +1,19 @@
+{
+  "name": "taidong-market-dusk",
+  "mood": ["夜市", "にぎやか", "台湾", "夏"],
+  "seed": "taidong-market-dusk-v1",
+  "tweaks": [
+    "src0:=templeZigzag",
+    "src0.layers=4",
+    "src0.teeth=12",
+    "src0.speed=0.25",
+    "mat0:=cheapLed",
+    "mat0.pitch=20",
+    "mat0.dropout=0.15",
+    "mat0.hue=30",
+    "palette.saturation=58",
+    "palette.lightness=32",
+    "composition.speed=0.35"
+  ],
+  "notes": "旧台東駅の市集。cheapLed の dropout は少しだけ＝安い看板感。"
+}

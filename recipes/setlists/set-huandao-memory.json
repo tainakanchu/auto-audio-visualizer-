@@ -1,0 +1,65 @@
+{
+  "id": "set-huandao-memory",
+  "title": "環島メモリー・アンビエント 30min",
+  "context": "台湾環島の写真記憶を映像化。深夜やホーム向け",
+  "energyArc": [0.2, 0.35, 0.5, 0.4, 0.28, 0.15],
+  "durationMin": 30,
+  "ground": {
+    "role": "地 — 道と港（長距離）",
+    "cycleMin": 7,
+    "sequence": [
+      {
+        "tMin": 0,
+        "recipe": "huandao-climb",
+        "transition": "slow"
+      },
+      {
+        "tMin": 8,
+        "recipe": "sodium-wet-road",
+        "transition": "slow"
+      },
+      {
+        "tMin": 15,
+        "recipe": "typhoon-edge",
+        "transition": "default"
+      },
+      {
+        "tMin": 20,
+        "recipe": "summer-coast-refresh",
+        "transition": "slow"
+      },
+      {
+        "tMin": 26,
+        "recipe": "dawn-afterhours-road",
+        "transition": "slow"
+      }
+    ]
+  },
+  "figure": {
+    "role": "図 — 市集・騎楼・MiniDV（短周期で記憶の断片）",
+    "cycleMin": 2,
+    "sequence": [
+      {
+        "tMin": 2,
+        "recipe": "humid-qilou-night"
+      },
+      {
+        "tMin": 6,
+        "recipe": "taidong-market-dusk"
+      },
+      {
+        "tMin": 12,
+        "recipe": "night-market-curtain"
+      },
+      {
+        "tMin": 18,
+        "recipe": "minidv-faded-memory"
+      },
+      {
+        "tMin": 24,
+        "recipe": "ambient-harbor-black"
+      }
+    ]
+  },
+  "notes": "地=移動、図=寄った風景。X の「出発、回帰線、雨、パンク、飯」を弧にする。"
+}

@@ -1,0 +1,20 @@
+{
+  "name": "hard-house-skeleton",
+  "mood": ["硬派", "ハウス", "インフラ", "暗い"],
+  "seed": "hard-house-skeleton-v1",
+  "tweaks": [
+    "src0:=flyoverBeams",
+    "src0.spacing=0.45",
+    "src0.diagonal=0.6",
+    "src0.scroll=0.25",
+    "fld0:=flow",
+    "fld0.speed=0.4",
+    "fld0.amount=0.2",
+    "mat0:=humidGalvanized",
+    "palette.saturation=16",
+    "palette.lightness=26",
+    "composition.symmetry=4",
+    "composition.speed=0.5"
+  ],
+  "notes": "硬派ハウス用。X で自己ジャンルとしては未確認だが、現場で足りなかった語への回答。派手ネオン禁止。"
+}

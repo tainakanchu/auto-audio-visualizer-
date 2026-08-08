@@ -1,0 +1,17 @@
+{
+  "name": "rnb-karaoke-after",
+  "mood": ["R&B", "カラオケ", "夜", "懐かしい"],
+  "seed": "rnb-karaoke-after-v1",
+  "tweaks": [
+    "src0:=stripes",
+    "mat0:=karaokeLcd",
+    "mat0.angleDrift=0.25",
+    "mat0.cheapness=0.4",
+    "mat0.intensity=0.35",
+    "palette.hueOffset=280",
+    "palette.saturation=45",
+    "palette.lightness=36",
+    "composition.speed=0.28"
+  ],
+  "notes": "東アジアのカラオケ部屋残光。cheapness 上げすぎでゲーミングにしない。"
+}

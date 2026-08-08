@@ -1,0 +1,19 @@
+{
+  "name": "scooter-slip-humid",
+  "mood": ["スクーター", "台湾", "湿気", "夜"],
+  "seed": "scooter-slip-humid-v1",
+  "tweaks": [
+    "src0:=qilouShutter",
+    "fld0:=scooterSlipstream",
+    "fld0.riders=5",
+    "fld0.pull=0.4",
+    "fld0.amount=0.28",
+    "mat0:=asphaltIridescence",
+    "mat0.grit=0.5",
+    "palette.hueOffset=18",
+    "palette.saturation=34",
+    "palette.lightness=30",
+    "composition.speed=0.4"
+  ],
+  "notes": "台北の機車の流れ。地に騎楼、図に slipstream。"
+}

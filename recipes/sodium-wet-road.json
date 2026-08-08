@@ -1,0 +1,20 @@
+{
+  "name": "sodium-wet-road",
+  "mood": ["街灯", "雨", "夜", "湿気"],
+  "seed": "sodium-wet-road-v1",
+  "tweaks": [
+    "src0:=roadStitch",
+    "src0.lanes=3",
+    "src0.speed=0.15",
+    "src0.breakup=0.25",
+    "+humidityLens:fld0",
+    "fld0.amount=0.3",
+    "mat0:=sodium",
+    "mat0.haze=0.75",
+    "palette.hueOffset=38",
+    "palette.saturation=42",
+    "palette.lightness=20",
+    "composition.speed=0.14"
+  ],
+  "notes": "環島の夜道・雨の 7 割日。travelling を slow に落とす。"
+}

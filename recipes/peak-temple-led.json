@@ -1,0 +1,17 @@
+{
+  "name": "peak-temple-led",
+  "mood": ["ピーク", "神社仏閣", "安いLED", "派手"],
+  "seed": "peak-temple-led-v1",
+  "tweaks": [
+    "src0:=templeZigzag",
+    "src0.speed=0.45",
+    "mat0:=cheapLed",
+    "mat0.pitch=14",
+    "mat0.dropout=0.1",
+    "palette.hueOffset=8",
+    "palette.saturation=68",
+    "palette.lightness=40",
+    "composition.speed=0.65"
+  ],
+  "notes": "祝祭ピーク。このツールの美的では例外的に彩度を許す枠。"
+}

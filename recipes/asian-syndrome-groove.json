@@ -1,0 +1,19 @@
+{
+  "name": "asian-syndrome-groove",
+  "mood": ["アジア", "にぎやか", "夜", "ハウス"],
+  "seed": "asian-syndrome-groove-v1",
+  "tweaks": [
+    "src0:=busJacquard",
+    "fld0:=crossingParallax",
+    "fld0.layers=3",
+    "fld0.speed=0.35",
+    "fld0.amount=0.3",
+    "mat0:=neon",
+    "mat0.hue=20",
+    "mat0.intensity=0.4",
+    "palette.saturation=48",
+    "palette.lightness=34",
+    "composition.speed=0.42"
+  ],
+  "notes": "アジアンシンドローム向け。DOCTOR HEAD 地下バー規模。neon intensity は抑えめ。"
+}

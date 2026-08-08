@@ -1,0 +1,18 @@
+{
+  "name": "andor-floaty-stage",
+  "mood": ["ふわふわ", "アンビエント", "明るい", "柔らかい"],
+  "seed": "andor-floaty-stage-v1",
+  "tweaks": [
+    "src0:=sdfBlob",
+    "fld0:=humidityLens",
+    "fld0.refraction=0.4",
+    "fld0.amount=0.25",
+    "mat0:=goldfoil",
+    "mat0.sparkle=0.25",
+    "mat0.patina=0.35",
+    "palette.saturation=22",
+    "palette.lightness=60",
+    "composition.speed=0.14"
+  ],
+  "notes": "Andr ライブの「ふわふわした心地よい」。sparkle は控えめ。"
+}

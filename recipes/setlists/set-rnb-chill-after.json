@@ -1,0 +1,60 @@
+{
+  "id": "set-rnb-chill-after",
+  "title": "R&B / チル アフター 30min",
+  "context": "終盤・バー残り・会話あり",
+  "energyArc": [0.35, 0.4, 0.38, 0.32, 0.25, 0.18],
+  "durationMin": 30,
+  "ground": {
+    "role": "地 — 親密な夜",
+    "cycleMin": 8,
+    "sequence": [
+      {
+        "tMin": 0,
+        "recipe": "rnb-late-intimate",
+        "transition": "slow"
+      },
+      {
+        "tMin": 10,
+        "recipe": "crt-broadcast-ghost",
+        "transition": "slow"
+      },
+      {
+        "tMin": 18,
+        "recipe": "mandopop-soft-pink",
+        "transition": "slow"
+      },
+      {
+        "tMin": 24,
+        "recipe": "dawn-afterhours-road",
+        "transition": "slow"
+      }
+    ]
+  },
+  "figure": {
+    "role": "図 — MiniDV / 湿気の微細な変化",
+    "cycleMin": 3,
+    "sequence": [
+      {
+        "tMin": 4,
+        "recipe": "minidv-faded-memory"
+      },
+      {
+        "tMin": 12,
+        "recipe": "rnb-karaoke-after"
+      },
+      {
+        "tMin": 16,
+        "recipe": "freezer-cyan-konbini"
+      },
+      {
+        "tMin": 22,
+        "recipe": "break-humidity-hold"
+      },
+      {
+        "tMin": 28,
+        "recipe": "ambient-sumi-breath"
+      }
+    ]
+  },
+  "notes": "energy は下がる一方。地と図の両方が slow。"
+}

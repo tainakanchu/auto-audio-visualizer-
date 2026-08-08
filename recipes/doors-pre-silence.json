@@ -1,0 +1,15 @@
+{
+  "name": "doors-pre-silence",
+  "mood": ["開場前", "PA", "暗い", "静か"],
+  "seed": "doors-pre-silence-v1",
+  "tweaks": [
+    "src0:=viaductJoints",
+    "mat0:=paCarpet",
+    "palette.saturation=10",
+    "palette.lightness=22",
+    "composition.speed=0.06",
+    "mod0:=gamma",
+    "mod0.curve=1.4"
+  ],
+  "notes": "ほぼ黒に近い開場前。preSilenceBlack もあるが生活素材優先。"
+}

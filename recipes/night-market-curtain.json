@@ -1,0 +1,24 @@
+{
+  "name": "night-market-curtain",
+  "mood": ["夜市", "台湾", "湿った", "ビニールカーテン"],
+  "seed": "night-market-curtain-v1",
+  "tweaks": [
+    "src0:=nightMarketCurtain",
+    "src0.strips=18",
+    "src0.unevenness=0.55",
+    "src0.swayAmt=0.35",
+    "+sway:fld0",
+    "fld0.freq=0.6",
+    "fld0.speed=0.2",
+    "fld0.amount=0.25",
+    "mat0:=brakeLightRain",
+    "mat0.intensity=0.45",
+    "mat0.streak=0.55",
+    "mat0.wetness=0.7",
+    "palette.hueOffset=28",
+    "palette.saturation=48",
+    "palette.lightness=18",
+    "composition.speed=0.16"
+  ],
+  "notes": "夜市の入口。brakeLightRain は赤味が乗りやすいので lightness を抑える。"
+}

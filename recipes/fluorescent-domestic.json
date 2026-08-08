@@ -1,0 +1,16 @@
+{
+  "name": "fluorescent-domestic",
+  "mood": ["蛍光灯", "生活感", "開場前", "静か"],
+  "seed": "fluorescent-domestic-v1",
+  "tweaks": [
+    "src0:=windows",
+    "mat0:=fluorescent",
+    "mat0.hue=95",
+    "mat0.flicker=0.12",
+    "mat0.intensity=0.45",
+    "palette.saturation=16",
+    "palette.lightness=58",
+    "composition.speed=0.1"
+  ],
+  "notes": "開場前の白。flicker を上げすぎない（生活感であってホラーにしない）。"
+}
