@@ -28,7 +28,8 @@
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /** vj-ctl.mjs の実体。同じ scripts/ ディレクトリに並ぶ前提で相対解決する。env で上書き可能。 */
 const VJ_CTL_PATH = process.env.VJ_CTL_PATH ?? `${import.meta.dirname}/vj-ctl.mjs`;
@@ -116,13 +117,13 @@ function rand(seed, namespace, index) {
 // 「ローカルは通ったのにサーバで弾かれる」が起きるので、値は必ず一致させること。
 // ---------------------------------------------------------------------------
 
-const CURRENT_SCHEMA_VERSION = 1; // src/synth/schema.ts
+export const CURRENT_SCHEMA_VERSION = 1; // src/synth/schema.ts
 
-const PALETTE_MODES = ['mono', 'analogous', 'complementary', 'triadic', 'rainbow'];
+export const PALETTE_MODES = ['mono', 'analogous', 'complementary', 'triadic', 'rainbow'];
 
-const CATEGORY_RANK = { source: 0, field: 1, modifier: 2, material: 3 };
+export const CATEGORY_RANK = { source: 0, field: 1, modifier: 2, material: 3 };
 
-const COUNT_LIMITS = {
+export const COUNT_LIMITS = {
   source: { min: 1, max: 2 },
   field: { min: 0, max: 2 },
   modifier: { min: 1, max: 3 },
@@ -130,29 +131,87 @@ const COUNT_LIMITS = {
 };
 
 /**
- * derive.ts が使う route source 一覧（validate.ts が受け付ける集合と、変調エンジンが
- * 解決できる集合の積）。生成時の候補プールはこれだけを使う — audio:beat や
- * operator:* は候補に入れない（derive.ts と同じ判断）。
+ * 由来: src/synth/derive.ts の ROUTE_SOURCES。生成時の route source 候補プールは
+ * これだけを使う。
+ *
+ * `audio:beatPhase` / `audio:barPhase` は**入っていない**。あれはテンポグリッド
+ * 上の位置を返すノコギリ波で、音量に関係なく（無音でも）回り続けるため、
+ * 変調に使っても「音に反応している」感には一切ならない。同じ理由で拍系は
+ * `audio:gridPulse` / `audio:barPulse` ではなく `audio:beatIntensity` を使う —
+ * gridPulse/barPulse はブレイク中もフリーホイールするので無音でも脈打つ。
  */
-const ROUTE_SOURCES = [
+export const ROUTE_SOURCES = [
   'audio:bass',
   'audio:mid',
   'audio:treble',
   'audio:level',
-  'audio:beatPhase',
-  'audio:barPhase',
+  'audio:beatIntensity',
 ];
 
 /** 由来: src/synth/validate.ts の AUDIO_SOURCES。検証だけはこちらの広い集合を使う。 */
-const AUDIO_SOURCES = new Set([
+export const AUDIO_SOURCES = new Set([
   'audio:bass',
   'audio:mid',
   'audio:treble',
   'audio:level',
   'audio:beat',
+  'audio:beatIntensity',
+  'audio:gridPulse',
+  'audio:barPulse',
   'audio:barPhase',
   'audio:beatPhase',
 ]);
+
+/**
+ * 由来: src/synth/derive.ts の TARGET_KINDS / SAFE_TARGET_PARAMS / TARGET_WEIGHT_BY_PARAM。
+ * 変調してよいパラメータ名の許可リストを「何に効くか」で分類したもの。拒否リスト
+ * ではなく許可リストなのは、「音に反応して画が消える」ことを構造的に禁止するため。
+ * threshold / gate / dropout のように上げると絵が消えるパラメータがカタログ全体に
+ * 散らばっていて、名前で危険なものを数え上げるやり方だと必ず取りこぼす。ここに
+ * 載るのは「増える = 見える / 動く」方向のパラメータだけ。weight は候補が少ない
+ * 種類ほど重くして、大きさ系ばかりに選択が偏らないようにするためのもの。
+ */
+const TARGET_KINDS = {
+  size: { weight: 1, params: ['scale', 'size', 'thickness', 'radius', 'width', 'depth', 'zoom'] },
+  density: { weight: 2, params: ['amount', 'density', 'count'] },
+  light: {
+    weight: 2,
+    params: ['intensity', 'strength', 'glow', 'brightness', 'sparkle', 'sheen'],
+  },
+  motion: {
+    weight: 2,
+    params: [
+      'speed',
+      'rate',
+      'spin',
+      'twist',
+      'wobble',
+      'drift',
+      'flow',
+      'vortex',
+      'pull',
+      'tension',
+    ],
+  },
+  warp: { weight: 3, params: ['warp', 'shift'] },
+};
+
+/** 変調してよい paramId。derive.ts の SAFE_TARGET_PARAMS 相当。 */
+export const SAFE_TARGET_PARAMS = new Set(Object.values(TARGET_KINDS).flatMap((k) => k.params));
+
+/** paramId → 選ばれやすさ。derive.ts の TARGET_WEIGHT_BY_PARAM 相当。 */
+const TARGET_WEIGHT_BY_PARAM = new Map(
+  Object.values(TARGET_KINDS).flatMap((k) => k.params.map((id) => [id, k.weight])),
+);
+
+/**
+ * 由来: src/synth/derive.ts の MOTION_TARGET_PARAMS / MOTION_RATIO_MAX。動きの速さ
+ * そのものを持つパラメータは変調の振り幅を別に絞る。ここを他と同じ幅で振ると、
+ * 大音量のときだけ「BPM と関係なくギュインギュイン動く」になる。音で速くなる
+ * こと自体は反応として欲しいので、上限で抑える。
+ */
+export const MOTION_TARGET_PARAMS = new Set(['speed', 'rate', 'spin', 'twist', 'drift', 'flow']);
+export const MOTION_RATIO_MAX = 0.3;
 
 const TAG_AXES = ['affect', 'motion', 'material', 'environment', 'culturalTexture'];
 
@@ -574,6 +633,16 @@ function buildComposition(seed, moodMeans, energy) {
 // routes — derive.ts の collectRouteTargets を踏襲
 // ---------------------------------------------------------------------------
 
+/** target の paramId 部分。`<opId>.<paramId>` 前提。由来: src/synth/derive.ts の paramIdOf。 */
+function paramIdOf(targetKey) {
+  return targetKey.slice(targetKey.indexOf('.') + 1);
+}
+
+/**
+ * 変調先の候補を集める。SAFE_TARGET_PARAMS に無いパラメータは、modulatable でも
+ * 候補にしない（音で画が消えないための第一の関門）。由来: src/synth/derive.ts の
+ * collectRouteTargets。
+ */
 function collectRouteTargets(operators, catalogMap) {
   const out = [];
   for (const op of operators) {
@@ -581,6 +650,7 @@ function collectRouteTargets(operators, catalogMap) {
     if (!def) continue;
     for (const param of def.parameters) {
       if (!param.modulatable) continue;
+      if (!SAFE_TARGET_PARAMS.has(param.id)) continue;
       if (param.kind !== 'number' && param.kind !== 'int') continue;
       if (typeof param.min !== 'number' || typeof param.max !== 'number') continue;
       if (!(param.max > param.min)) continue;
@@ -624,20 +694,30 @@ function buildRoutesFromTargets(seed, nsPrefix, targets, energy) {
       seed,
       `${nsPrefix}:${i}:target`,
       remaining,
-      () => 1,
+      (t) => TARGET_WEIGHT_BY_PARAM.get(paramIdOf(t.key)) ?? 1,
       1,
     )[0];
     const idx = remaining.findIndex((t) => t.key === target.key);
     remaining.splice(idx, 1);
 
-    const ratio =
+    let ratio =
       energyToRouteRatio(energy) * (0.85 + rand(seed, `${nsPrefix}:${i}:amount`, 0) * 0.3);
+    // 動きの速さそのものを持つパラメータは振り幅を別に絞る。ここを他と同じ幅で
+    // 振ると、大音量のときだけ「BPM と関係なくギュインギュイン動く」になる。
+    // 由来: src/synth/derive.ts の MOTION_TARGET_PARAMS / MOTION_RATIO_MAX。
+    if (MOTION_TARGET_PARAMS.has(paramIdOf(target.key))) {
+      ratio = Math.min(ratio, MOTION_RATIO_MAX);
+    }
     const amount = ratio * (target.max - target.min);
 
     const smoothing =
       energyToSmoothingBase(energy) * (0.9 + rand(seed, `${nsPrefix}:${i}:smoothing`, 0) * 0.2);
 
-    const polarity = rand(seed, `${nsPrefix}:${i}:polarity`, 0) < 0.8 ? 'unipolar' : 'bipolar';
+    // 常に unipolar。bipolar は無音時に -amount という定数オフセットになり、
+    // 「音が無いと薄くなる / 消える」を作ってしまう。不変条件: 音は常に
+    // Patch の見た目に**足す**方向にしか効かない（無音時が下限）。
+    // 由来: src/synth/derive.ts の buildRoutes のコメント。
+    const polarity = 'unipolar';
 
     routes.push({ source, target: target.key, amount, polarity, smoothing });
   }
@@ -1204,4 +1284,8 @@ function main() {
   }
 }
 
-main();
+// main() は直接実行時のみ走らせる。ドリフトテストが定数だけを import
+// したいときに main() が誤って走る(process.exitCode 汚染や argv の誤爆)のを防ぐ。
+if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
+  main();
+}

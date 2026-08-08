@@ -237,3 +237,13 @@ pnpm preview   # ビルド成果物をローカルで確認
 ```
 
 `dist/` に静的ファイルが出力されるので、任意の静的ホスティングに配置できます。
+
+## 開発ツール
+
+Semantic Synth の VisualPatch（JSON）を送信前にローカルで検証する CLI を同梱しています。
+
+```bash
+pnpm vj:validate patch.json
+```
+
+`src/synth/validate.ts` / `src/synth/cost.ts` を Vite の SSR モジュールローダーで直接実行するので、検証ルールの複製はありません。他にも VJ ツールを外部から操縦する CLI 群（`scripts/vj-ctl.mjs` など）がありますが、詳細は `.claude/skills/vj-director/SKILL.md` を参照してください。
