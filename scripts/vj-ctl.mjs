@@ -15,6 +15,7 @@
 import { randomBytes } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { basename, extname } from 'node:path';
+import { pathToFileURL } from 'node:url';
 import { WebSocket } from 'ws';
 
 const DEFAULT_PORT = 7877;
@@ -85,9 +86,10 @@ const USAGE = `使い方: node scripts/vj-ctl.mjs <command> [options]
     MAX_IMAGE_BYTES / 1024 / 1024
   }MB）
                                返る hash を Patch の images["<opId>.image"] に入れて使う
-  event add --in <sec>|--bar <n> [--seed <s>] [--patch <file>] [--label <s>]
-                               [--transition default|slow|cut]
-                               「N 秒後 / N 小節後に切り替える」イベントを Timeline に追加
+  event add --in <sec>|--bar <n>|--cue <id> [--seed <s>] [--patch <file>]
+                               [--label <s>] [--transition default|slow|cut]
+                               「N 秒後 / N 小節後に切り替える」、または external anchor
+                               （手動発火専用）のイベントを Timeline に追加
   event remove <id>            イベントを削除
   lock <sec>                   今から <sec> 秒間 Timeline をロックする（相対指定）
   fire <externalId>            external anchor のイベントを手動発火
@@ -111,6 +113,7 @@ room 専用オプション:
   node scripts/vj-ctl.mjs image ./logo.png --name event-logo
   node scripts/vj-ctl.mjs event add --in 30 --seed rainy-qilou --transition slow
   node scripts/vj-ctl.mjs event add --bar 8 --patch /tmp/patch.json
+  node scripts/vj-ctl.mjs event add --cue drop --patch /tmp/patch.json --label "drop"
   node scripts/vj-ctl.mjs lock 60
   node scripts/vj-ctl.mjs record stop > recording.json
   node scripts/vj-ctl.mjs room --host auto-audio-visualizer.example.workers.dev
@@ -302,7 +305,7 @@ function resultOut(result, extra, hint) {
   return { ok, output: `${JSON.stringify(payload, null, 2)}\n`, hint: ok ? undefined : hint };
 }
 
-async function buildEventAdd(conn, flags) {
+export async function buildEventAdd(conn, flags) {
   // 相対指定（N 秒後 / N 小節後）を絶対 anchor に直すには、いま何秒・何小節かが要る。
   const state = await conn.request('getState');
 
@@ -312,8 +315,12 @@ async function buildEventAdd(conn, flags) {
     start = { kind: 'bar', bar: Math.floor(state.barCount) + numberFlag(flags, 'bar') };
   } else if (flags.has('in')) {
     start = { kind: 'seconds', atSec: state.nowSec + numberFlag(flags, 'in') };
+  } else if (flags.has('cue')) {
+    // external anchor: isDue は 'external' に対して常に false を返すので、
+    // fire <id> で手動発火するまで絶対に自動発火しない（vj-set.mjs の cue-load 用）。
+    start = { kind: 'external', id: flags.get('cue') };
   } else {
-    usageError('event add には --in <sec> か --bar <n> のどちらかが必要です');
+    usageError('event add には --in <sec> か --bar <n> か --cue <id> のいずれかが必要です');
   }
 
   const intent = {};
@@ -559,4 +566,13 @@ async function main() {
   }
 }
 
-await main();
+// buildEventAdd を直接 import してユニットテストできるよう export したことで、
+// このファイルは「スクリプトとして実行される」だけでなく「モジュールとして import
+// される」経路も持つようになった。import された側で main() まで動いてしまうと、
+// テストプロセスの argv で実ネットワーク接続（openConnection）を試みかねない
+// （本番の bridge/relay に触れてはいけない、という制約に抵触する）ので、
+// 直接実行されたときだけ起動する。`node scripts/vj-ctl.mjs ...` として動かした
+// ときの挙動はこれまでと変わらない。
+if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+  await main();
+}
