@@ -143,6 +143,8 @@ node scripts/vj-ctl.mjs load recording.json
 - `--in <sec>` … 今から N 秒後（`start = {kind:'seconds', atSec: nowSec + sec}`）
 - `--bar <n>` … 今から N 小節後（`start = {kind:'bar', bar: floor(barCount) + n}`）。`--bar` があればこちらが優先。
   テンポがロックされていない（`state.tempoLocked === false`）と bar anchor は発火しないので、その場合は `--in` を使う。
+- `--cue <id>` … external anchor（`{kind:'external', id}`）。`fire <id>` で手動発火するまで絶対に自動発火しない。
+  `--bar` / `--in` と同時に指定すると、それらが優先される（`--cue` は最後に評価される）。
 - `--seed <s>` / `--patch <file>` / `--label <s>` … intent。最低ひとつ要る（全部無いとエラー）。
 - `--transition default | slow | cut` … 既定は `default`。`slow` は default の 2 倍かけて溶ける。`cut` は 120ms で切り替わる。
 
@@ -414,6 +416,81 @@ budget 超過はローカル検証（vj-gen.mjs / vj-tweak.mjs）では一切検
 `{"ok":false,"issues":[...]}` で初めて分かる。手で組んだ Patch はもちろん、vj-gen /
 vj-tweak の `--dry-run` の出力も対象にすること。
 
+## vj-set.mjs — セット（複数シーン）を cue として仕込む
+
+本番用のセット（曲順に沿った複数シーンのプレイリスト）を Timeline にまとめて仕込み、
+本番中は 1 コマンドで次のシーンへ進めるための CLI。`vj-ctl.mjs` を子プロセスとして
+呼ぶだけ（WebSocket 通信は自前で行わない）。`vj-gen.mjs` / `vj-tweak.mjs` と違い
+`--url` / `VJ_URL` は必須ではない: オペレーターが手元の `pnpm bridge` に対して直接叩く
+道具という位置づけなので、`--url` も `--port` も無指定なら `vj-ctl.mjs` 自身の既定
+（`ws://127.0.0.1:7877`）にそのまま任せる。リレー越しに使うときだけ `--url` を付ける。
+
+セット JSON の形式:
+
+```json
+{
+  "name": "taiwan-night",
+  "scenes": [
+    { "cue": "s1", "patch": "scenes/s1.json", "label": "湿気", "transition": "slow" },
+    { "cue": "s2", "patch": "scenes/s2.json", "label": "騎楼", "transition": "slow" },
+    { "cue": "s3", "patch": "scenes/s3.json", "label": "点灯", "transition": "default" }
+  ]
+}
+```
+
+各シーンの `cue`（セット内で一意な文字列）と `patch`（`<set.json>` と同じディレクトリ
+からの相対パス）は必須。`label` / `transition`（`default` / `slow` / `cut`、省略時
+`default`）は任意。
+
+サブコマンド:
+
+| コマンド | 何をするか |
+|---|---|
+| `load <set.json>` | 全シーンの patch をローカル検証してから Timeline に仕込む |
+| `next` | まだ発火していない cue のうち Timeline 上でいちばん手前のものを 1 つ発火する |
+| `status` | 今出ている cue と次に発火する cue を表示する |
+
+```bash
+node scripts/vj-set.mjs load sets/taiwan-night.json
+node scripts/vj-set.mjs next
+node scripts/vj-set.mjs status
+```
+
+`load` は 1 シーンでも patch が検証ゲートに落ちると **何も送らずに** issues を返す
+（一部だけ仕込まれた中途半端な Timeline を作らない）。全シーンが通ったら、`scenes[0]`
+は `event add --in 0`（次フレームでほぼ即発火）で**常に**送り、`scenes[1..]` は
+`event add --cue <cue>` として Timeline に積む。`scenes[0]` を `--in 0` で送るのは
+`patch` を直接叩くのと違い、`record start` 中なら add 操作も実際の発火も両方録画される
+ため（= セットの再生そのものが録画対象になる）。
+
+`load` は**再実行しても安全**: `scenes[1..]` のうち、cue が既に Timeline 上にある
+（前回の `load` などで積まれた）ものは送らずスキップする。ただし `scenes[0]` は
+「このセットを (再) 開始する」という操作者の意思表示とみなし、再実行のたびに毎回
+(再) 適用する。cue が既にあるかどうかしか見ない（中身までは比較しない）ので、
+別のセットが同じ cue 名を使い回していると気づかずスキップされる — 差し替えたい
+ときは先に `vj-ctl.mjs event remove <id>` で消してから `load` すること。
+
+セットに入れる patch は事前に `vj-validate.mjs` を通しておくこと。`load` 自身の
+ローカル検証は `vj-gen.mjs` / `vj-tweak.mjs` と同じ手作業の複製で、budget/cost
+チェックを含まない。
+
+## タイミングは事前に確定するな — `--cue` / `vj-set.mjs` という選択肢
+
+**タイミングは事前に確定するな。素材は事前に仕込み、発火のタイミングだけは本番の手に残せ。**
+
+`--in` / `--bar` は「自動的に、決めた時刻・小節で進めたい」場面向け（例: BPM に
+同期させたい、無人で自動進行させたい構成）。どちらも相対指定を CLI がその場で絶対値に
+直して送るので、会話をしながら 30 分尺のセットを組み立てていると、ずっと前に積んだ
+予約の絶対時刻がいつの間にか過去になっていて、意図しないタイミングで発火する事故が
+実際に起きている。
+
+`event add --cue <id>` / `vj-set.mjs` は「タイミングをその場の判断に委ねたい」場面向け
+（例: DJ の展開読みに合わせて切りたい、長尺セットで進行がズレるリスクを避けたい）。
+external anchor は `fire <id>` を叩くまで絶対に自動発火しない（`isDue` が `'external'`
+に対して常に false を返す）ので、セット全体を先に仕込んでおいても「気づいたら発火して
+いた」が起こり得ない。迷ったら `--cue` 側に倒すこと — 自動発火は「本当にその時刻・
+小節で進めたい」と明言されたときだけ使う。
+
 ## いつ何を使うか
 
 - **「〜な感じにして」「ムードで」「とりあえず変えて」** → `vj-gen.mjs "<mood words>"` を
@@ -424,6 +501,11 @@ vj-tweak の `--dry-run` の出力も対象にすること。
 - **「すぐ変えて」** → `seed <s>`（狙いが緩いとき・ガチャでよいとき）か `patch <file>`（狙いが明確なとき）。
 - **「後で変えて」「サビで」「あと 1 分くらいしたら」** → `event add`。
   秒で言われたら `--in`、小節で言われたら `--bar`。予約した id は出力に入っているので控えておく。
+  タイミングをその場の判断に委ねたいだけなら（自動発火させたくないなら）`--cue <id>` にする。
+- **「セット全体を仕込んでおいて、本番中に自分のタイミングで進めたい」** →
+  `vj-set.mjs load <set.json>` でまとめて仕込み、本番中は `vj-set.mjs next`
+  （または `vj-ctl.mjs fire <cue>`）で 1 つずつ進める。`event add --in` / `--bar` は
+  単発の予約を直接組み立てたいときのプリミティブとして残る。
 - **「今のを保存して」「さっきの流れをもう一回」** → `record start` … `record stop > file.json` → `load file.json`。
 - **「しばらくいじらないで」** → `lock <sec>`（今から N 秒）。
 
