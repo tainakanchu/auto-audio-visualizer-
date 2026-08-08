@@ -47,7 +47,16 @@ export const PALETTE_KEYS = ['mode', 'hueOffset', 'saturation', 'lightness'];
 export const COMPOSITION_KEYS = ['symmetry', 'scale', 'speed'];
 export const QUALITY_TIERS = ['low', 'medium', 'high'];
 
+/** `--reroll=<value>` のカテゴリ名 → src/synth/derive.ts の RerollOptions のキー。 */
+export const REROLL_CATEGORIES = new Map([
+  ['params', 'parameters'],
+  ['routes', 'routes'],
+  ['palette', 'palette'],
+  ['composition', 'composition'],
+]);
+
 const USAGE = `使い方: node vj-tweak.mjs [--url <ws(s)://…>] [--dry-run] [--seed <s>] [--refresh-catalog] <change>...
+       node vj-tweak.mjs [--url <ws(s)://…>] [--dry-run] --reroll[=<categories>] [--reroll-seed <s>] [<change>...]
        node vj-tweak.mjs --help
 
 vj-ctl.mjs（${VJ_CTL_PATH}。VJ_CTL_PATH で上書き可）を子プロセスとして呼び出し、
@@ -66,6 +75,15 @@ WebSocket 通信は一切自前で行わない。
 オプション:
   --url <ws(s)://…>           接続先（省略時は環境変数 VJ_URL を使う）
   --seed <s>                  送る draft の seed を上書き（<change> の有無に関わらず適用）
+  --reroll[=<categories>]     operator の構成（トポロジ）は固定したまま、パラメータ / route /
+                               palette / composition を新しい seed で引き直す（src/synth/derive.ts
+                               の rerollPatch を使う。実体は Vite SSR 経由なので初回だけ数秒かかる）。
+                               値なし = 全部（${[...REROLL_CATEGORIES.keys()].join('/')}）、
+                               値ありはカンマ区切りで部分指定（例: --reroll=params,palette）。
+                               <change> トークンより先に適用され、その後 <change> / --seed が
+                               上から効く（reroll → 手直し、の順）。
+  --reroll-seed <s>            --reroll に使う seed を固定（省略時はランダム生成）。再現用に
+                               使った seed は必ず stdout の先頭行に出す。
   --dry-run                   検証だけ行い、通れば draft を stdout に出して送信しない
   --refresh-catalog           catalog キャッシュ（${CATALOG_CACHE_PATH}）を無視して取り直す
   --help                      このヘルプ
@@ -74,7 +92,10 @@ WebSocket 通信は一切自前で行わない。
   node vj-tweak.mjs --url wss://example.workers.dev/room/xxxx src0.frequency=4.2
   node vj-tweak.mjs --url wss://example.workers.dev/room/xxxx --dry-run +threshold:th1 th1.thresholdValue=0.6
   node vj-tweak.mjs --url wss://example.workers.dev/room/xxxx -fld1 palette.mode=rainbow qualityTier=high
-  node vj-tweak.mjs --url wss://example.workers.dev/room/xxxx --refresh-catalog src0:=noise-field`;
+  node vj-tweak.mjs --url wss://example.workers.dev/room/xxxx --refresh-catalog src0:=noise-field
+  node vj-tweak.mjs --url wss://example.workers.dev/room/xxxx --dry-run --reroll
+  node vj-tweak.mjs --url wss://example.workers.dev/room/xxxx --dry-run --reroll=params,palette
+  node vj-tweak.mjs --url wss://example.workers.dev/room/xxxx --reroll --reroll-seed take2`;
 
 /** 引数の誤り。main が USAGE を出して exit 1 にする。 */
 class UsageError extends Error {}
@@ -89,20 +110,40 @@ function usageError(message) {
 // 引数
 // ---------------------------------------------------------------------------
 
-const BOOLEAN_FLAGS = new Set(['help', 'dry-run', 'refresh-catalog']);
-const KNOWN_FLAGS = new Set(['help', 'dry-run', 'refresh-catalog', 'url', 'seed']);
+const BOOLEAN_FLAGS = new Set(['help', 'dry-run', 'refresh-catalog', 'reroll']);
+const KNOWN_FLAGS = new Set([
+  'help',
+  'dry-run',
+  'refresh-catalog',
+  'url',
+  'seed',
+  'reroll',
+  'reroll-seed',
+]);
 
 /**
- * `--flag value` / 真偽フラグ / 位置引数を解釈する。<change> トークンは `-opId` のように
- * 単一ハイフンで始まりうるので、フラグ扱いするのは `--` 始まりだけ（vj-ctl.mjs と同じ判定）。
+ * `--flag value` / `--flag=value` / 真偽フラグ / 位置引数を解釈する。<change> トークンは
+ * `-opId` のように単一ハイフンで始まりうるので、フラグ扱いするのは `--` 始まりだけ
+ * （vj-ctl.mjs と同じ判定）。
+ *
+ * `--flag=value` は `--reroll=params,palette` のためだけに足した最小限の拡張: `=` が
+ * あれば常にインライン値として扱い、次の argv トークンは消費しない（<change> トークンや
+ * 後続フラグと衝突させないため）。`=` が無ければ従来どおり（真偽フラグ or 次トークンを値に）。
  */
-function parseArgv(argv) {
+export function parseArgv(argv) {
   const positional = [];
   const flags = new Map();
   for (let i = 0; i < argv.length; i++) {
     const arg = argv[i];
     if (!arg.startsWith('--')) {
       positional.push(arg);
+      continue;
+    }
+    const eqIdx = arg.indexOf('=');
+    if (eqIdx !== -1) {
+      const name = arg.slice(2, eqIdx);
+      if (!KNOWN_FLAGS.has(name)) usageError(`不明なフラグ: --${name}`);
+      flags.set(name, arg.slice(eqIdx + 1));
       continue;
     }
     const name = arg.slice(2);
@@ -119,6 +160,40 @@ function parseArgv(argv) {
     i++;
   }
   return { positional, flags };
+}
+
+/**
+ * `--reroll` / `--reroll=<categories>` の値を RerollOptions 相当の4つの真偽値に変換する。
+ * `value === true`（値なしの bare `--reroll`）は全部 true。文字列のときはカンマ区切りで
+ * カテゴリ名を並べたものとして扱い、指定されたものだけ true、それ以外は false にする
+ * （`params` だけ `parameters` に読み替え、残り3つは名前がそのまま一致する）。
+ *
+ * 未知のカテゴリ名は例外を投げず `{ error }` を返す（classifyChange と同じ流儀 — 呼び出し側が
+ * 複数エラーをまとめて集計できるようにするため）。空文字列も「未知のカテゴリ名(空)」として
+ * 同じ経路でエラーになる。
+ */
+export function parseRerollSpec(value) {
+  if (value === true) {
+    return { parameters: true, routes: true, palette: true, composition: true };
+  }
+  const spec = { parameters: false, routes: false, palette: false, composition: false };
+  const tokens = String(value)
+    .split(',')
+    .map((t) => t.trim());
+  const wanted = new Set();
+  for (const token of tokens) {
+    const key = REROLL_CATEGORIES.get(token);
+    if (!key) {
+      return {
+        error:
+          `--reroll=${JSON.stringify(value)} の "${token}" は不明なカテゴリです` +
+          `（有効な値: ${[...REROLL_CATEGORIES.keys()].join(', ')}）`,
+      };
+    }
+    wanted.add(key);
+  }
+  for (const key of wanted) spec[key] = true;
+  return spec;
 }
 
 /**
@@ -573,7 +648,7 @@ export function runPatchLevelChecks(draft, catalogMap, errors) {
 // main
 // ---------------------------------------------------------------------------
 
-function main() {
+async function main() {
   try {
     const { positional, flags } = parseArgv(process.argv.slice(2));
 
@@ -581,7 +656,18 @@ function main() {
       process.stdout.write(`${USAGE}\n`);
       return;
     }
-    if (positional.length === 0) usageError('<change> を1つ以上指定してください');
+
+    const rerollRequested = flags.has('reroll');
+    // --reroll の値だけ先に検証する。url 解決や vj-ctl.mjs 呼び出し、Vite SSR の起動
+    // （数秒かかる）より前に、fail fast で弾けるように。
+    const rerollSpec = rerollRequested ? parseRerollSpec(flags.get('reroll')) : null;
+    if (rerollSpec?.error) usageError(rerollSpec.error);
+
+    // --reroll だけでも実行できる（それ自体が「変更」なので）。<change> が要るのは
+    // --reroll を使わないときだけ。
+    if (positional.length === 0 && !rerollRequested) {
+      usageError('<change> を1つ以上指定するか --reroll を指定してください');
+    }
 
     // --url / VJ_URL は「引数の誤り」ではなく実行時条件として扱う
     // （USAGE の大ブロックを出すほどのことではないので一行で終わらせる）。
@@ -631,7 +717,80 @@ function main() {
     const catalogMap = new Map(catalogLoad.catalog.map((def) => [def.id, def]));
 
     // --- draft を組み立てる ---
-    const draft = structuredClone(currentPatch);
+    let draft = structuredClone(currentPatch);
+
+    // --reroll: operator の構成（トポロジ）は固定したまま、パラメータ / route /
+    // palette / composition を新しい seed で引き直す。<change> トークンや --seed
+    // より必ず先に効かせる（reroll してから手直し、の順で上から上書きされる）。
+    //
+    // ここだけ src/synth/derive.ts の本物の rerollPatch を呼ぶ必要がある
+    // （このファイルの他の検証はすべて validate.ts のローカル複製だが、rerollPatch は
+    // 複製が許されない生成ロジックそのものなので複製しない）。CLI は .ts を直接
+    // import できないので、scripts/vj-validate.mjs と同じ手法（Vite の SSR モジュール
+    // ローダー）で src/synth/derive.ts と src/synth/generators/index.ts を実行する。
+    // これは重い（createServer だけで数百ms〜数秒）ので、--reroll を使わない
+    // 呼び出しではこの分岐に一切入らず、import ("vite") 自体も動的 import でこの
+    // 分岐の中でしか評価しない — トップレベルで `import { createServer } from 'vite'`
+    // すると、--reroll を使わない大多数の呼び出しまで毎回この起動コストを払うことになる。
+    if (rerollRequested) {
+      const { createServer } = await import('vite');
+      const root = resolve(import.meta.dirname, '..');
+      const server = await createServer({
+        configFile: false,
+        root,
+        server: { middlewareMode: true, watch: null },
+        appType: 'custom',
+        logLevel: 'error',
+      });
+      let rerollErrorMessage;
+      try {
+        const [deriveMod, generatorsMod, variationMod] = await Promise.all([
+          server.ssrLoadModule('/src/synth/derive.ts'),
+          server.ssrLoadModule('/src/synth/generators/index.ts'),
+          server.ssrLoadModule('/src/variation/generate.ts'),
+        ]);
+
+        // 注意: generatorsMod.inlineCatalog は実装付きの「本物の」フルカタログ
+        // （InlineGeneratorCatalog）で、上で読み込んだ catalogMap（vj-ctl.mjs
+        // catalog コマンドが返すメタデータ JSON、キャッシュされている場合もある）
+        // とは別物。rerollPatch はこの本物のカタログでなければ動かないので、
+        // catalogMap を使い回そうとしないこと。
+        const rerollSeed = flags.has('reroll-seed')
+          ? flags.get('reroll-seed')
+          : variationMod.randomSeed();
+
+        // seed を stdout に出す（再現性のため）。どこに出すか判断が要った:
+        // 「vj-tweak.mjs を子プロセスとして spawn し、その stdout を JSON として
+        // 消費している」箇所をリポジトリ全体で grep したが、このファイル自身の
+        // テスト（scripts/vj-tweak.test.mjs、--dry-run の stdout をまるごと
+        // JSON.parse する）以外には見つからなかった（scripts/vj-recipe.mjs は
+        // このファイルを動的 import して純粋関数だけ呼ぶので stdout 出力の影響を
+        // 受けない）。したがって「stdout に出す」という要望を文字どおり満たし、
+        // JSON 本体の前に1行だけ出す方を選んだ（stderr に逃がす案も検討したが、
+        // 他に stdout=JSON 前提の消費者が実在しない以上、素直な方を採る）。
+        // --dry-run / 送信のどちらでも、reroll seed が決まった時点で必ず出す。
+        process.stdout.write(`vj-tweak: reroll seed = ${rerollSeed}\n`);
+
+        draft = deriveMod.rerollPatch(draft, rerollSeed, {
+          catalog: generatorsMod.inlineCatalog,
+          parameters: rerollSpec.parameters,
+          routes: rerollSpec.routes,
+          palette: rerollSpec.palette,
+          composition: rerollSpec.composition,
+        });
+      } catch (e) {
+        rerollErrorMessage = e instanceof Error ? e.message : String(e);
+      } finally {
+        await server.close();
+      }
+      if (rerollErrorMessage !== undefined) {
+        jsonOut({ ok: false, issues: [`[reroll] ${rerollErrorMessage}`] });
+        process.stderr.write(`- [reroll] ${rerollErrorMessage}\n`);
+        process.exitCode = 1;
+        return;
+      }
+    }
+
     if (flags.has('seed')) draft.seed = flags.get('seed');
 
     const currentIds = new Set(draft.operators.map((op) => op.id));
@@ -698,6 +857,10 @@ function main() {
 
 // main() は直接実行時のみ走らせる。ドリフトテストが定数だけを import
 // したいときに main() が誤って走る(process.exitCode 汚染や argv の誤爆)のを防ぐ。
+// main() が async になったので await する — ESM のトップレベル await は許されており、
+// main 内で捕まえきれなかった想定外の例外（UsageError 以外）はそのまま reject として
+// 伝播し、Node のデフォルト処理で非ゼロ終了・スタックトレース表示になる（同期版の
+// 「投げっぱなしで uncaught exception にする」という挙動を async でも維持する）。
 if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
-  main();
+  await main();
 }

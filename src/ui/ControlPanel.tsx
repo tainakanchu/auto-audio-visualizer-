@@ -35,6 +35,14 @@ interface ControlPanelProps {
   onToggleFullscreen: () => void;
   /** Reroll the look-gacha seed to a fresh random value. */
   onReroll: () => void;
+  /**
+   * Reroll parameters/routes/palette/composition from a fresh seed while keeping
+   * the current Semantic Synth operators (topology) exactly as-is — same "shape"
+   * and audio-reactive glitch set as `onReroll` would normally also shuffle, just
+   * with new details. Only meaningful when a semantic-synth VisualPatch exists;
+   * disabled in the UI otherwise (see `settings.sceneId` gating below).
+   */
+  onRerollDetails: () => void;
   /** Tap tempo (manual BPM). */
   onTap: () => void;
   /** Multiply the tempo grid by 2 or 0.5. */
@@ -108,6 +116,7 @@ export function ControlPanel(props: ControlPanelProps): React.ReactElement {
     onShiftScene,
     onToggleFullscreen,
     onReroll,
+    onRerollDetails,
     onTap,
     onTempoMultiply,
     onTempoAuto,
@@ -371,6 +380,20 @@ export function ControlPanel(props: ControlPanelProps): React.ReactElement {
           >
             🎲
           </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={onRerollDetails}
+            disabled={settings.sceneId !== 'semantic-synth'}
+            aria-label="Reroll details, same operators"
+            title={
+              settings.sceneId === 'semantic-synth'
+                ? 'Reroll details — same operators, new parameters/routes/palette/composition (D)'
+                : 'Reroll details is only available on the Semantic Synth scene'
+            }
+          >
+            🧬
+          </button>
         </div>
       </div>
 
@@ -599,7 +622,8 @@ export function ControlPanel(props: ControlPanelProps): React.ReactElement {
       <div className="cheats">
         <kbd>1</kbd>–<kbd>9</kbd>,<kbd>0</kbd> scene · <kbd>←</kbd>
         <kbd>→</kbd> prev/next · <kbd>H</kbd> panel · <kbd>F</kbd> fullscreen · <kbd>A</kbd>{' '}
-        auto-cycle · <kbd>B</kbd> background · <kbd>R</kbd> reroll · <kbd>T</kbd> tap
+        auto-cycle · <kbd>B</kbd> background · <kbd>R</kbd> reroll · <kbd>D</kbd> reroll details ·{' '}
+        <kbd>T</kbd> tap
       </div>
     </div>
   );

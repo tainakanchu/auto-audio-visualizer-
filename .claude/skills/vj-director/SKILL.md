@@ -104,6 +104,11 @@ CLI (`scripts/vj-ctl.mjs`) から操縦する。叩いているのは `src/synth
 | `record start` / `record stop` | 演出の記録開始 / 停止して JSON を吐く |
 | `load <recording.json>` | 記録した演出を読み込んで再現 |
 
+`seed <seed>`（と UI の 🎲 ボタン）は operator の構成（トポロジ）ごとシードを丸ごと
+入れ替えるガチャ。**同じ「形」のまま細部だけ変えたいときは、この節ではなく
+`vj-tweak.mjs --reroll`（後述）を使う** — トポロジを固定するので、拍リアクション
+（`gl/reactions.ts` がトポロジから選ぶグリッチ）も変わらない。
+
 ```bash
 # 現在の状態を見る
 node scripts/vj-ctl.mjs state
@@ -373,6 +378,40 @@ budget/cost チェックは今も一切含まない。
 パラメータを参照する route を自動的に落とす。**黙っては消さない** — 何を落としたかは必ず
 stderr に警告として出る。
 
+### `--reroll` — トポロジは固定して、細部だけ引き直す
+
+`seed <s>`（vj-ctl.mjs）や 🎲 ボタンは operator の構成（トポロジ）ごとシードを丸ごと
+入れ替える「ガチャ」。トポロジが変わると `src/synth/gl/reactions.ts` が
+`topologyKey(operators)` から選ぶ拍リアクション（どのグリッチが乗るか）まで一緒に
+変わってしまう。**「同じ構成・同じリアクションのまま、パラメータや色だけ変えたい」ときは
+`--reroll` を使う。** 今の Patch の operator（id / generatorId / generatorVersion /
+並び順）はそのまま固定し、パラメータ / route / palette / composition だけ新しい seed で
+引き直す（`src/synth/derive.ts` の `rerollPatch` をそのまま呼ぶ。ローカル複製ではない）。
+
+```bash
+# 全部（parameters/routes/palette/composition）を引き直す。seed はランダム生成
+node scripts/vj-tweak.mjs --url wss://example.workers.dev/room/xxxx --dry-run --reroll
+
+# seed を固定して再現する
+node scripts/vj-tweak.mjs --url wss://example.workers.dev/room/xxxx --reroll --reroll-seed take2
+
+# palette だけ引き直す（カンマ区切りで複数指定も可: --reroll=params,palette）
+node scripts/vj-tweak.mjs --url wss://example.workers.dev/room/xxxx --dry-run --reroll=palette
+
+# --reroll のあとに <change> トークンを重ねると、トークン側が勝つ（reroll してから手直し）
+node scripts/vj-tweak.mjs --url wss://example.workers.dev/room/xxxx --reroll src0.frequency=4.2
+```
+
+`--reroll` の値は `params` / `routes` / `palette` / `composition` の4カテゴリ（カンマ区切りで
+部分指定）。値を付けない bare `--reroll` は全部。使った seed は再現用に必ず stdout の
+先頭行（`vj-tweak: reroll seed = <s>`）に出る（`--dry-run` の JSON 本体はその次の行から）。
+本物の `rerollPatch` を呼ぶ都合上、`--reroll` を使うときだけ Vite の SSR モジュールローダーが
+立ち上がり初回は数秒かかる（`vj-validate.mjs` と同じ手法。`--reroll` を使わない通常の
+呼び出しはこれまでどおり軽い）。
+
+UI にも同じ機能がある: Look 行の 🎲 の隣にある 🧬 ボタン（キーボードショートカット
+`D`）。semantic-synth シーンでのみ有効（それ以外のシーンではボタンが無効化される）。
+
 ## vj-validate.mjs — 送信前に本物の検証ゲートを通す
 
 `vj-gen.mjs` / `vj-tweak.mjs` のローカル検証は `src/synth/validate.ts` の手作業による
@@ -499,6 +538,7 @@ external anchor は `fire <id>` を叩くまで絶対に自動発火しない（
 - **手で組んだ Patch JSON、または vj-gen/vj-tweak の `--dry-run` 結果を送る前** →
   `vj-validate.mjs <file>` を通す。budget 超過はここでしか検出できない。
 - **「すぐ変えて」** → `seed <s>`（狙いが緩いとき・ガチャでよいとき）か `patch <file>`（狙いが明確なとき）。
+  「同じ構成のまま雰囲気だけ変えて」なら `vj-tweak.mjs --reroll`（トポロジ固定・拍リアクションも維持）。
 - **「後で変えて」「サビで」「あと 1 分くらいしたら」** → `event add`。
   秒で言われたら `--in`、小節で言われたら `--bar`。予約した id は出力に入っているので控えておく。
   タイミングをその場の判断に委ねたいだけなら（自動発火させたくないなら）`--cue <id>` にする。
