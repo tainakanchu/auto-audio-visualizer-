@@ -19,7 +19,8 @@
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /** vj-ctl.mjs の実体。同じ scripts/ ディレクトリに並ぶ前提で相対解決する。env で上書き可能。 */
 const VJ_CTL_PATH = process.env.VJ_CTL_PATH ?? `${import.meta.dirname}/vj-ctl.mjs`;
@@ -30,8 +31,8 @@ const CATALOG_CACHE_PATH = `${import.meta.dirname}/.vj-catalog-cache.json`;
 // 由来: src/synth/validate.ts の CATEGORY_RANK / COUNT_LIMITS をそのまま複製したもの
 // （CLI は .ts を import できないため）。サーバ側のゲートと食い違えると
 // 「ローカルは通ったのにサーバで弾かれる」が起きるので、値は必ず一致させること。
-const CATEGORY_RANK = { source: 0, field: 1, modifier: 2, material: 3 };
-const COUNT_LIMITS = {
+export const CATEGORY_RANK = { source: 0, field: 1, modifier: 2, material: 3 };
+export const COUNT_LIMITS = {
   source: { min: 1, max: 2 },
   field: { min: 0, max: 2 },
   modifier: { min: 1, max: 3 },
@@ -39,12 +40,12 @@ const COUNT_LIMITS = {
 };
 
 /** 由来: src/synth/derive.ts の pickOperatorsForCategory が使う id 命名規則（`${prefix}${n}`）。 */
-const CATEGORY_PREFIX = { source: 'src', field: 'fld', modifier: 'mod', material: 'mat' };
+export const CATEGORY_PREFIX = { source: 'src', field: 'fld', modifier: 'mod', material: 'mat' };
 
-const PALETTE_MODES = ['mono', 'analogous', 'complementary', 'triadic', 'rainbow'];
-const PALETTE_KEYS = ['mode', 'hueOffset', 'saturation', 'lightness'];
-const COMPOSITION_KEYS = ['symmetry', 'scale', 'speed'];
-const QUALITY_TIERS = ['low', 'medium', 'high'];
+export const PALETTE_MODES = ['mono', 'analogous', 'complementary', 'triadic', 'rainbow'];
+export const PALETTE_KEYS = ['mode', 'hueOffset', 'saturation', 'lightness'];
+export const COMPOSITION_KEYS = ['symmetry', 'scale', 'speed'];
+export const QUALITY_TIERS = ['low', 'medium', 'high'];
 
 const USAGE = `使い方: node vj-tweak.mjs [--url <ws(s)://…>] [--dry-run] [--seed <s>] [--refresh-catalog] <change>...
        node vj-tweak.mjs --help
@@ -695,4 +696,8 @@ function main() {
   }
 }
 
-main();
+// main() は直接実行時のみ走らせる。ドリフトテストが定数だけを import
+// したいときに main() が誤って走る(process.exitCode 汚染や argv の誤爆)のを防ぐ。
+if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
+  main();
+}
