@@ -256,3 +256,37 @@ pnpm preview   # ビルド成果物をローカルで確認
 ```
 
 `dist/` に静的ファイルが出力されるので、任意の静的ホスティングに配置できます。
+
+## 開発ツール
+
+Semantic Synth の VisualPatch（JSON）を送信前にローカルで検証する CLI を同梱しています。
+
+### vj:validate
+
+```bash
+pnpm vj:validate patch.json
+```
+
+`src/synth/validate.ts` / `src/synth/cost.ts` を Vite の SSR モジュールローダーで直接実行するので、検証ルールの複製はありません。他にも VJ ツールを外部から操縦する CLI 群（`scripts/vj-ctl.mjs` など）がありますが、詳細は `.claude/skills/vj-director/SKILL.md` を参照してください。
+
+### オフライン Patch プレビュー（`vj:preview`）
+
+LLM / 人間のディレクターが GLSL を読んで見た目を**推測**する代わりに、Patch をローカル GPU で描いて PNG にする CLI です。bridge や本番シーンには繋ぎません（`measure:coverage` と同じヘッドレス Chromium 経路）。
+
+```bash
+# カタログ全 Generator のコンタクトシート（いちばん使う）
+pnpm vj:preview --contact-sheet artifacts/contact-sheet.png
+
+# seed から derive した Patch のフィルムストリップ（複数時刻）
+pnpm vj:preview --seed humid-night-market artifacts/seed.png
+
+# 手書き / 生成した VisualPatch JSON
+pnpm vj:preview path/to/patch.json artifacts/patch.png
+
+# 1 パラメータを min..max で横並びスイープ
+pnpm vj:preview --sweep gamma.curve artifacts/sweep.png
+```
+
+- ヘッドレス Chromium が必要です。`nix develop` に入ると `CHROMIUM_BIN` が通ります（Playwright は単体では `CHROMIUM_BIN` を読まないので、ハーネス側が `launch()` に渡しています）。
+- source 以外のソロ描画は coverage 測定と同じく基準 source `grid` の上に載せます（`mod_coord` だけ source より前）。パラメータはカタログの default です。
+- 用途の中心は**コンタクトシートでカタログを目で見てから** Patch を組むこと。GLSL を先に読まない。

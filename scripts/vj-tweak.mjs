@@ -19,7 +19,8 @@
 import { spawnSync } from 'node:child_process';
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 /** vj-ctl.mjs の実体。同じ scripts/ ディレクトリに並ぶ前提で相対解決する。env で上書き可能。 */
 const VJ_CTL_PATH = process.env.VJ_CTL_PATH ?? `${import.meta.dirname}/vj-ctl.mjs`;
@@ -695,6 +696,8 @@ function main() {
   }
 }
 
-if (import.meta.url === `file://${process.argv[1]}`) {
+// main() は直接実行時のみ走らせる。ドリフトテストが定数だけを import
+// したいときに main() が誤って走る(process.exitCode 汚染や argv の誤爆)のを防ぐ。
+if (resolve(process.argv[1] ?? '') === fileURLToPath(import.meta.url)) {
   main();
 }

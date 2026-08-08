@@ -279,7 +279,8 @@ export interface FrameStats {
   quarterAlphaCounts: number[];
 }
 
-type RunResult = { ok: true; frames: FrameStats[] } | { ok: false; log: string };
+type RunStatsResult = { ok: true; frames: FrameStats[] } | { ok: false; log: string };
+type RunPngResult = { ok: true; pngs: string[] } | { ok: false; log: string };
 
 /**
  * Compile + link + draw a fullscreen program, once per entry in `times`.
@@ -287,6 +288,11 @@ type RunResult = { ok: true; frames: FrameStats[] } | { ok: false; log: string }
  * `times === null` keeps the `uTime` value already present in `uniforms` and
  * draws exactly once. Reusing one program across several time samples is what
  * makes a full coverage sweep affordable.
+ *
+ * `mode: 'stats'` (default) returns per-frame reductions only — nothing but
+ * scalars crosses the CDP boundary. `mode: 'png'` additionally flips
+ * readPixels (bottom-up → top-down), encodes each frame as PNG base64, and
+ * returns those strings for offline preview tooling.
  */
 async function runInBrowser(
   page: Page,
@@ -299,10 +305,11 @@ async function runInBrowser(
     imageSize: number;
     times: number[] | null;
     timeUniform: string;
+    mode?: 'stats' | 'png';
   },
-): Promise<RunResult> {
+): Promise<RunStatsResult | RunPngResult> {
   return page.evaluate(
-    ({ vertSrc, fragSrc, uniforms, size, textures, imageSize, times, timeUniform }) => {
+    ({ vertSrc, fragSrc, uniforms, size, textures, imageSize, times, timeUniform, mode }) => {
       const canvas = document.createElement('canvas');
       canvas.width = size;
       canvas.height = size;
@@ -518,6 +525,20 @@ async function runInBrowser(
         distinctAlphaLevels: number;
         quarterAlphaCounts: number[];
       }> = [];
+      const pngs: string[] = [];
+      const capturePng = mode === 'png';
+      /** Offscreen 2d canvas reused for PNG encode (only when capturing). */
+      let pngCanvas: HTMLCanvasElement | null = null;
+      let pngCtx: CanvasRenderingContext2D | null = null;
+      if (capturePng) {
+        pngCanvas = document.createElement('canvas');
+        pngCanvas.width = size;
+        pngCanvas.height = size;
+        pngCtx = pngCanvas.getContext('2d', { alpha: true });
+        if (!pngCtx) {
+          return { ok: false as const, log: '2d canvas context unavailable for PNG encode' };
+        }
+      }
       /** Reused across draws; 256 bytes beats allocating a Set per frame. */
       const alphaSeen = new Uint8Array(256);
       // `null` = draw once with the uTime already bound above.
@@ -529,6 +550,22 @@ async function runInBrowser(
         gl.clear(gl.COLOR_BUFFER_BIT);
         gl.drawArrays(gl.TRIANGLES, 0, 3);
         gl.readPixels(0, 0, size, size, gl.RGBA, gl.UNSIGNED_BYTE, buf);
+
+        if (capturePng && pngCtx && pngCanvas) {
+          // readPixels is bottom-up; flip Y so the PNG matches screen orientation.
+          const flipped = new Uint8ClampedArray(size * size * 4);
+          const rowBytes = size * 4;
+          for (let y = 0; y < size; y++) {
+            const src = (size - 1 - y) * rowBytes;
+            const dst = y * rowBytes;
+            flipped.set(buf.subarray(src, src + rowBytes), dst);
+          }
+          pngCtx.putImageData(new ImageData(flipped, size, size), 0, 0);
+          const dataUrl = pngCanvas.toDataURL('image/png');
+          const prefix = 'data:image/png;base64,';
+          pngs.push(dataUrl.startsWith(prefix) ? dataUrl.slice(prefix.length) : dataUrl);
+          continue;
+        }
 
         // One pass over the frame produces every reduction the callers need.
         // Nothing but these numbers is allowed to leave the browser.
@@ -582,6 +619,7 @@ async function runInBrowser(
       for (const t of createdTextures) gl.deleteTexture(t);
       gl.deleteProgram(prog);
 
+      if (capturePng) return { ok: true as const, pngs };
       return { ok: true as const, frames };
     },
     {
@@ -593,6 +631,7 @@ async function runInBrowser(
       imageSize: spec.imageSize,
       times: spec.times,
       timeUniform: spec.timeUniform,
+      mode: spec.mode ?? 'stats',
     },
   );
 }
@@ -619,8 +658,10 @@ export async function renderInBrowser(
     imageSize,
     times: null,
     timeUniform: TIME_UNIFORM,
+    mode: 'stats',
   });
   if (!res.ok) return res;
+  if (!('frames' in res)) return { ok: false, log: 'expected stats result' };
   const frame = res.frames[0];
   if (!frame) return { ok: false, log: 'no frame was rendered' };
   return { ok: true, frame };
@@ -649,12 +690,58 @@ export async function measureFramesInBrowser(
     imageSize,
     times,
     timeUniform: TIME_UNIFORM,
+    mode: 'stats',
   });
   if (!res.ok) return res;
+  if (!('frames' in res)) return { ok: false, log: 'expected stats result' };
   if (res.frames.length !== times.length) {
     return { ok: false, log: `expected ${times.length} frames, got ${res.frames.length}` };
   }
   return { ok: true, frames: res.frames };
+}
+
+/**
+ * One PNG (base64, no data-URL prefix) per time sample.
+ *
+ * Same assemble / uniform / texture path as {@link measurePatchFrames}, but the
+ * browser returns PNG bytes instead of FrameStats — for offline preview CLI.
+ */
+export async function capturePatchPngs(
+  page: Page,
+  patch: VisualPatch,
+  size: number,
+  times: number[],
+  textureKind: TextureSpec['kind'] = 'pattern',
+): Promise<RunPngResult> {
+  const built = assemble(patch);
+  if (!built.ok) return built;
+  const assembled = built.shader;
+  const uniforms = buildUniformSpecs(patch, assembled, size);
+  const textures = textureSpecs(assembled, textureKind);
+  try {
+    const res = await runInBrowser(page, {
+      vertSrc: FULLSCREEN_VERT,
+      fragSrc: assembled.fragSrc,
+      uniforms,
+      size,
+      textures,
+      imageSize: DUMMY_IMAGE_SIZE,
+      times,
+      timeUniform: TIME_UNIFORM,
+      mode: 'png',
+    });
+    if (!res.ok) return res;
+    if (!('pngs' in res)) return { ok: false, log: 'expected png result' };
+    if (res.pngs.length !== times.length) {
+      return { ok: false, log: `expected ${times.length} pngs, got ${res.pngs.length}` };
+    }
+    return { ok: true, pngs: res.pngs };
+  } catch (e) {
+    return {
+      ok: false,
+      log: `GPU error: ${e instanceof Error ? e.message : String(e)}`,
+    };
+  }
 }
 
 /**
