@@ -12,7 +12,7 @@
  *
  * Usage:
  *   node scripts/vj-preview.mjs patch.json out.png
- *   node scripts/vj-preview.mjs --seed "humid-night-market" out.png
+ *   node scripts/vj-preview.mjs --seed "take-1" out.png
  *   node scripts/vj-preview.mjs --contact-sheet out.png
  *   node scripts/vj-preview.mjs --sweep gamma.curve out.png
  */
