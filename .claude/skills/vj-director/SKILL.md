@@ -162,15 +162,39 @@ node scripts/vj-ctl.mjs load recording.json
 
 依頼はたいてい「もっと湿った感じ」「懐かしい方向で」のような形容詞で来る。
 まず `vj-gen.mjs`(後述)でムード語から生成してみると、この手順の大部分を省けることが多い。
-ここでは vj-gen の結果を手で詰めるとき、または vj-gen が届かない作り込みのための手順を説明する。手順:
+ここでは vj-gen の結果を手で詰めるとき、または vj-gen が届かない作り込みのための手順を説明する。
 
-1. **`catalog` でタグを眺める。** 各 Generator には 5 軸のタグが付いている
+**手で Patch を組む前に、カタログのコンタクトシートを目で見ること。** GLSL を読んで見た目を
+推測するより、実際の描画を見た方が速いし外しにくい。ローカルだけで完結する（bridge 不要・
+本番に送らない）:
+
+```bash
+# 全 Generator をグリッドで焼いた PNG（ラベル付き）。nix develop 推奨（CHROMIUM_BIN）
+pnpm vj:preview --contact-sheet /tmp/contact-sheet.png
+# または
+node scripts/vj-preview.mjs --contact-sheet /tmp/contact-sheet.png
+```
+
+seed や手書き Patch も、送る前に同じ CLI でドライランできる:
+
+```bash
+pnpm vj:preview --seed humid-night-market /tmp/seed.png
+pnpm vj:preview /tmp/patch.json /tmp/patch.png
+```
+
+プレビューは観測用。本番への適用はこれまでどおり `vj-ctl` / `vj-gen` 経由。
+
+手順:
+
+1. **コンタクトシートで見た目を掴む**（上記）。候補 id が分かってからタグを読む。
+2. **`catalog` でタグを眺める。** 各 Generator には 5 軸のタグが付いている
    （`environment` / `culturalTexture` / `material` / `motion` / `affect`）。
    形容詞は主に **`affect`** と **`culturalTexture`** に対応する。
-2. **`state` で現在の Patch を取る。** `currentPatch` をベースにする。ゼロから組むより、
+3. **`state` で現在の Patch を取る。** `currentPatch` をベースにする。ゼロから組むより、
    いま出ているものの operators を差し替える方が事故が少ない。
-3. **operators を差し替えた Patch JSON を作る**（ステージ順・員数制限は下記）。
-4. **`patch <file.json>` で適用。** 検証ゲートに落ちたら `issues` が返るので、それを見て直す。
+4. **operators を差し替えた Patch JSON を作る**（ステージ順・員数制限は下記）。
+   送る前に `pnpm vj:preview path/to/patch.json /tmp/check.png` で見た目を確認してよい。
+5. **`patch <file.json>` で適用。** 検証ゲートに落ちたら `issues` が返るので、それを見て直す。
 
 ### 実在するタグ → Generator の対応（`catalog` で確認できるもの）
 

@@ -12,6 +12,7 @@
     "vj:tweak": "node scripts/vj-tweak.mjs",
     "vj:validate": "node scripts/vj-validate.mjs",
     "measure:coverage": "node scripts/measure-coverage.mjs",
+    "vj:preview": "node scripts/vj-preview.mjs",
     "lint": "oxlint --type-aware",
     "lint:fix": "oxlint --type-aware --fix",
     "format": "oxfmt",
