@@ -42,6 +42,19 @@ export const AUDIO_SOURCES = new Set([
   'audio:beatPhase',
 ]);
 
+/**
+ * Route の source に書ける swell:* の一覧。
+ *
+ * {@link AUDIO_SOURCES} と同じく **modulation.ts の `resolveSourceValue` が解決
+ * できる集合と一致させること**。`audio:*` と別の Set にしてあるのは、scripts 側の
+ * ドリフト検査（constants-drift）が「audio の名簿」として突き合わせているのと、
+ * うねりは音そのものではなく音から生やした時間軸だから。
+ *
+ * どれも 0..1 unipolar で無音では 0 に落ちるので、`audio:*` と同じ安全性
+ * （音で画が消えない）を満たす。
+ */
+export const SWELL_SOURCES = new Set(['swell:wave', 'swell:group', 'swell:set', 'swell:surge']);
+
 function issue(code: string, message: string, path?: string): ValidationIssue {
   return path === undefined ? { code, message } : { code, message, path };
 }
@@ -401,7 +414,7 @@ export function validatePatch(patch: VisualPatch, catalog: GeneratorCatalog): Va
 
     // source
     const source = route.source;
-    if (source === 'time' || AUDIO_SOURCES.has(source)) {
+    if (source === 'time' || AUDIO_SOURCES.has(source) || SWELL_SOURCES.has(source)) {
       // ok
     } else if (source.startsWith('operator:')) {
       const sourceOpId = source.slice('operator:'.length);
@@ -418,7 +431,7 @@ export function validatePatch(patch: VisualPatch, catalog: GeneratorCatalog): Va
       issues.push(
         issue(
           'invalid_source',
-          `route source "${source}" is not a known form (audio:*, time, operator:<opId>)`,
+          `route source "${source}" is not a known form (audio:*, swell:*, time, operator:<opId>)`,
           `${basePath}.source`,
         ),
       );

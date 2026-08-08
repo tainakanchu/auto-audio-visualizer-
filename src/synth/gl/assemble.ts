@@ -253,6 +253,12 @@ export function assemblePatch(
   // uPunch / uEnergy は「音そのもの」ではなく、無音でゲートされた演出用の量。
   // uBeat と違ってブレイク中のフリーホイールでは動かない（scene 側でゲート済み）。
   lines.push('uniform float uPunch, uEnergy;');
+  // うねり。これも「音そのもの」ではなく、音から生やした**時間軸**で、
+  // 秒（wave）→ 十秒（group）→ 分（set / surge）と桁の違うスケールを持つ。
+  // 有義波高 Hs 経由なので無音では構造的に 0 に落ちる = 別途ゲートしなくてよい。
+  // 4 本とも常に宣言しておくのは Generator 側からも読めるようにするため。
+  // 読まれなければ GLSL コンパイラが落とすので、宣言だけのコストは無い。
+  lines.push('uniform float uSwellWave, uSwellGroup, uSwellSet, uSwellSurge;');
   lines.push('uniform float uFade;');
   lines.push(`uniform uint ${SEED_UNIFORM};`);
   if (hasReactions) {

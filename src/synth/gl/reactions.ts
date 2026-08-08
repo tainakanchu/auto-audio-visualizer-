@@ -59,12 +59,21 @@ export interface Reaction {
  * `uBass` などの帯域は生値で、マイクの環境ノイズでも 0 より上に浮く。そのまま
  * 使うと「無音でも反応する」ので、必ず `uEnergy`（ノイズゲート済みの平滑音量）を
  * 掛けてから使う。`uPunch` は scene 側で既にゲート済み。
+ *
+ * **うねり (`rSwell` / `rSet`) には `uEnergy` を掛けない。** 帯域と違ってこれらは
+ * 生値ではなく、有義波高 Hs を通った量で、無音では Hs → 0 とともに構造的に 0 へ
+ * 落ちる（swell.ts の不変条件）。つまりゲートは既に効いている。ここで重ねて
+ * 掛けると二重ゲートになり、音が入ってから絵が動き出すまでが余計に鈍る —
+ * うねりはただでさえ立ち上がりが遅い（GROWTH_TAU = 18 秒）ので、その遅さは
+ * 設計どおりの味であって、さらに遅くするものではない。
  */
 export const REACTION_DRIVE_GLSL = `  float rPunch = uPunch;
   float rEnergy = uEnergy;
   float rBass = uBass * uEnergy;
   float rMid = uMid * uEnergy;
-  float rTreble = uTreble * uEnergy;`;
+  float rTreble = uTreble * uEnergy;
+  float rSwell = uSwellGroup;
+  float rSet = uSwellSet;`;
 
 /** 乱数名前空間の定数名。assembler が Patch ごとの値で宣言する。 */
 export const REACTION_NS_CONST = 'kReactNs';
@@ -150,6 +159,33 @@ const COORD_REACTIONS: readonly Reaction[] = [
     glsl: `  {
     p.x = mix(p.x, abs(p.x), smoothstep(0.20, 0.80, rPunch));
     p.y = mix(p.y, abs(p.y), smoothstep(0.55, 0.95, rPunch));
+  }`,
+  },
+  {
+    id: 'swellDrift',
+    stage: 'coord',
+    weight: 3,
+    label: 'うねりが横に流れる（海面が寄せては返す）',
+    glsl: `  {
+    // 波群の包絡線でゆっくり横に流れる。拍で弾けるものと違い、効きも戻りも
+    // 数秒〜十数秒かける（rSwell が持つ波群の周期がそのまま出る）。
+    // 空間周波数を低く・時間周波数を遅く取ってあるので、waveTear のような
+    // 走査線グリッチではなく「うねっている」に見える。
+    float a = 0.055 * rSwell;
+    p.x += a * sin(p.y * 3.7 + uTime * 0.45);
+    p.y += a * 0.6 * sin(p.x * 2.9 - uTime * 0.31);
+  }`,
+  },
+  {
+    id: 'setSurge',
+    stage: 'coord',
+    weight: 2,
+    label: 'セット（長周期のうねり）でゆっくり寄って持ち上がる',
+    glsl: `  {
+    // 寄る方向にしか振らない。p を広げる（= ズームアウトする）と overlay の
+    // 外周にソースの無い余白ができて、合成先が透けてしまう。
+    p *= 1.0 - 0.085 * rSet;
+    p.y -= 0.020 * rSet;
   }`,
   },
 ];
@@ -249,6 +285,27 @@ const COLOR_REACTIONS: readonly Reaction[] = [
     glsl: `  {
     // 成分の入れ替えと補間だけなので、どの成分も max(rgb) <= a を超えない。
     col.rgb = mix(col.rgb, col.gbr, smoothstep(0.50, 0.85, rPunch));
+  }`,
+  },
+  {
+    id: 'crestGlow',
+    stage: 'color',
+    weight: 3,
+    label: 'うねりの峰がゆっくり通り抜けて明るむ',
+    glsl: `  {
+    // 太くて遅い帯が縦にゆっくり流れる。scanGlow（90 本 / uTime*5.0）と違って
+    // 2.6 本 / uTime*0.5 なので、走査線ではなく「うねりの峰」に見える。
+    //
+    // 明るくする側だけ。暗くする側を混ぜると音量に応じた持続的な減光になり、
+    // 「音で画が消えない」の不変条件を崩す（rSwell/rSet は拍ではなく音量側の
+    // 量なので、暗転に使ってよい rPunch とは扱いが違う）。
+    //
+    // プリマルチプライド維持: rgb と a に同じ係数を掛けてから、同じ上限 1.0 で
+    // 各成分を切る。min は単調なので rgb <= a は切ったあとも保たれる（scanGlow
+    // と同じ論法）。
+    float crest = 0.5 + 0.5 * sin((p.y + 0.5) * 2.6 - uTime * 0.5);
+    float k = (0.34 * rSwell + 0.20 * rSet) * crest;
+    col = min(col * (1.0 + k), vec4(1.0));
   }`,
   },
 ];
