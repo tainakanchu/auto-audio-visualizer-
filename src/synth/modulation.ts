@@ -9,6 +9,7 @@
  */
 import type { AudioFrame } from '../audio/types';
 import type { InlineGeneratorCatalog } from './generators/types';
+import type { SwellState } from './swell';
 import type { ModulationRoute, ParameterDefinition, VisualPatch } from './types';
 
 /**
@@ -30,11 +31,26 @@ export interface ResolvedModulation {
 }
 
 export interface ModulationEngine {
-  /** 1フレーム進めて、各 target への変調量を解決する。 */
-  update(audio: AudioFrame, t: number, dt: number): ResolvedModulation;
+  /**
+   * 1フレーム進めて、各 target への変調量を解決する。
+   *
+   * `swell` は MotionClock が持っている**唯一の海**の直近状態。engine 側は
+   * SwellClock を持たない — 持つと同じ音から 2 つの違う波ができてしまう。
+   * 省略時は全ゼロ、つまり `swell:*` route が常に 0 を返す（無音と同じ扱い）。
+   */
+  update(audio: AudioFrame, t: number, dt: number, swell?: SwellState): ResolvedModulation;
   /** 平滑化の内部状態をリセットする。 */
   reset(): void;
 }
+
+/**
+ * `swell` を渡されなかったときの既定。
+ *
+ * `swell.ts` の `ZERO_SWELL_STATE` を import すると modulation → swell → modulation
+ * の実行時循環ができる（`swell.ts` はここから `smoothK` を取っている）。型だけの
+ * import は消えるので、値はここに持つ。中身は同じ全ゼロ。
+ */
+const ZERO_SWELL: SwellState = Object.freeze({ wave: 0, group: 0, set: 0, surge: 0 });
 
 /** 未対応・未知の変調ソース。黙って 0 を返さないための明示エラー。 */
 export class UnknownModulationSourceError extends Error {
@@ -62,7 +78,12 @@ export function smoothK(dt: number, tau: number): number {
   return 1 - Math.exp(-dt / Math.max(TAU_EPS, tau));
 }
 
-function resolveSourceValue(source: string, audio: AudioFrame, t: number): number {
+function resolveSourceValue(
+  source: string,
+  audio: AudioFrame,
+  t: number,
+  swell: SwellState,
+): number {
   switch (source) {
     case 'audio:bass':
       return audio.bass;
@@ -87,6 +108,17 @@ function resolveSourceValue(source: string, audio: AudioFrame, t: number): numbe
       return audio.beatPhase;
     case 'audio:barPhase':
       return audio.barPhase;
+    // うねり。いずれも 0..1 unipolar で、無音では構造的に 0 に落ちる
+    // （= 音が止まっても定数オフセットが残らない）。時間軸のスケールが
+    // audio:* と桁で違うのが値打ちで、秒〜十秒〜分の変調が取れる。
+    case 'swell:wave':
+      return swell.wave;
+    case 'swell:group':
+      return swell.group;
+    case 'swell:set':
+      return swell.set;
+    case 'swell:surge':
+      return swell.surge;
     case 'time':
       // 正規化しない生の経過秒。スケールは amount で調整する。
       return t;
@@ -105,20 +137,25 @@ export function createModulationEngine(routes: ModulationRoute[]): ModulationEng
     if (route.source.startsWith('operator:')) {
       throw new UnknownModulationSourceError(route.source);
     }
-    // time / 既知 audio 以外は resolve で例外。構築時も同じ経路で検査する。
-    resolveSourceValue(route.source, EMPTY_AUDIO_FOR_VALIDATE, 0);
+    // time / 既知 audio / 既知 swell 以外は resolve で例外。構築時も同じ経路で検査する。
+    resolveSourceValue(route.source, EMPTY_AUDIO_FOR_VALIDATE, 0, ZERO_SWELL);
   }
 
   /** route index → 平滑化済みソース値 */
   const smoothed = Array.from({ length: routes.length }, () => 0);
 
   return {
-    update(audio: AudioFrame, t: number, dt: number): ResolvedModulation {
+    update(
+      audio: AudioFrame,
+      t: number,
+      dt: number,
+      swell: SwellState = ZERO_SWELL,
+    ): ResolvedModulation {
       const offsets = new Map<string, number>();
 
       for (let i = 0; i < routes.length; i++) {
         const route = routes[i]!;
-        const raw = resolveSourceValue(route.source, audio, t);
+        const raw = resolveSourceValue(route.source, audio, t, swell);
 
         let s: number;
         if (route.smoothing === 0) {

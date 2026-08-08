@@ -44,6 +44,10 @@ const TEXTURED_IDS = inlineCatalog
  * 続けるノコギリ波なので、変調に使っても音に反応したことにならない。
  * 拍系は無音で 0 に落ちる `audio:beatIntensity` のみ（`audio:gridPulse` は
  * ブレイク中もフリーホイールするので derive では使わない）。
+ *
+ * `swell:group` / `swell:set` は音から生やしたうねりで、無音では構造的に 0 に
+ * 落ちるので同じ安全性を満たす。`swell:wave`（速すぎる）と `swell:surge`
+ * （下限が高く変調として動かない）は候補プールに入れていない。
  */
 const ROUTE_AUDIO_SOURCES = new Set([
   'audio:bass',
@@ -51,6 +55,8 @@ const ROUTE_AUDIO_SOURCES = new Set([
   'audio:treble',
   'audio:level',
   'audio:beatIntensity',
+  'swell:group',
+  'swell:set',
 ]);
 
 function defCatalogFrom(catalog = inlineCatalog) {
@@ -98,6 +104,23 @@ describe('synth/derive', () => {
         if (patch.routes.length >= 1) withRoutes += 1;
       }
       expect(withRoutes).toBeGreaterThan(180);
+    });
+
+    it('grows swell routes for some seeds, and keeps them out of the pulse smoothing band', () => {
+      let swellRoutes = 0;
+      for (let i = 0; i < 200; i++) {
+        for (const r of derivePatch(`swell-route-${i}`, { catalog: inlineCatalog }).routes) {
+          if (!r.source.startsWith('swell:')) continue;
+          swellRoutes += 1;
+          // 候補プールに入れたのは group / set の 2 本だけ。
+          expect(['swell:group', 'swell:set']).toContain(r.source);
+          // pulse: false なので拍用の 0.05〜0.15 秒ではなく 0.4〜1.6 秒側が掛かる。
+          expect(r.smoothing).toBeGreaterThanOrEqual(0.4);
+          expect(r.smoothing).toBeLessThanOrEqual(1.6);
+        }
+      }
+      // weight 3 / 合計 15 なので、200 seed 回せば必ず何本かは生える。
+      expect(swellRoutes).toBeGreaterThan(10);
     });
 
     it('all routes use allowed audio sources, unique targets, finite amount, plausible smoothing', () => {

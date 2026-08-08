@@ -196,6 +196,16 @@ export function buildUniformSpecs(
     // 他の音 uniform が 0.5 なのに合わせて 0.5 / 0.5*0.5 に置く。
     { name: 'uEnergy', kind: '1f', value: 0.5 },
     { name: 'uPunch', kind: '1f', value: 0.25 },
+    // うねりも他の音 uniform と同じ 0.5 の土俵に置く。**0 にしてはいけない**:
+    // うねり駆動のリアクションは駆動値 0 で完全な恒等変換になる契約なので、
+    // 0 だとプレビュー画像にも被覆率にも一切現れず、新しいリアクションを
+    // 目でも数字でも検証できなくなる。
+    // （実際の定常状態の平均は group 0.36 / set 0.19 ともう少し低いが、ここが
+    // 再現したいのは「うねりが乗った 1 フレーム」なので他と揃える。）
+    { name: 'uSwellWave', kind: '1f', value: 0.5 },
+    { name: 'uSwellGroup', kind: '1f', value: 0.5 },
+    { name: 'uSwellSet', kind: '1f', value: 0.5 },
+    { name: 'uSwellSurge', kind: '1f', value: 0.5 },
     { name: 'uFade', kind: '1f', value: 1.0 },
     { name: SEED_UNIFORM, kind: '1ui', value: seedToU32(patch.seed) >>> 0 },
   ];

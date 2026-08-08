@@ -277,7 +277,7 @@ function validatePatchLocal(patch, catalogArray) {
     }
 
     const source = route.source;
-    if (source === 'time' || AUDIO_SOURCES.has(source)) {
+    if (source === 'time' || AUDIO_SOURCES.has(source) || SWELL_SOURCES.has(source)) {
       // ok
     } else if (source.startsWith('operator:')) {
       const sourceOpId = source.slice('operator:'.length);
@@ -286,7 +286,7 @@ function validatePatchLocal(patch, catalogArray) {
       }
     } else {
       issues.push(
-        `route source "${source}" is not a known form (audio:*, time, operator:<opId>) (${basePath}.source)`,
+        `route source "${source}" is not a known form (audio:*, swell:*, time, operator:<opId>) (${basePath}.source)`,
       );
     }
   }

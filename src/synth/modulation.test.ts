@@ -7,6 +7,7 @@ import {
   DEFAULT_SMOOTHING,
   UnknownModulationSourceError,
 } from './modulation';
+import type { SwellState } from './swell';
 import type { GeneratorDefinition, ModulationRoute, VisualPatch } from './types';
 
 /** テスト用 AudioFrame ダミー。指定フィールドだけ上書きする。 */
@@ -339,6 +340,52 @@ describe('createModulationEngine', () => {
     expect(() =>
       createModulationEngine([route({ source: 'lfo', target: 'op0.amount', smoothing: 0 })]),
     ).toThrow(UnknownModulationSourceError);
+  });
+
+  describe('swell:* sources', () => {
+    const SWELL: SwellState = { wave: 0.2, group: 0.6, set: 0.4, surge: 0.8 };
+
+    it('resolves each layer from the SwellState it is handed', () => {
+      for (const [source, expected] of [
+        ['swell:wave', SWELL.wave],
+        ['swell:group', SWELL.group],
+        ['swell:set', SWELL.set],
+        ['swell:surge', SWELL.surge],
+      ] as const) {
+        const engine = createModulationEngine([
+          route({ source, target: 'op0.amount', amount: 1, smoothing: 0 }),
+        ]);
+        const { offsets } = engine.update(makeAudio(), 0, 1 / 60, SWELL);
+        expect(offsets.get('op0.amount'), source).toBeCloseTo(expected, 10);
+      }
+    });
+
+    it('still rejects an unknown swell layer at construction time', () => {
+      // 網が swell:* をまとめて通す作りになっていないことの確認。
+      expect(() =>
+        createModulationEngine([route({ source: 'swell:tide', target: 'op0.amount' })]),
+      ).toThrow(UnknownModulationSourceError);
+    });
+
+    it('reads 0 when no SwellState is passed (engine owns no clock of its own)', () => {
+      const engine = createModulationEngine([
+        route({ source: 'swell:group', target: 'op0.amount', amount: 1, smoothing: 0 }),
+      ]);
+      expect(engine.update(makeAudio(), 0, 1 / 60).offsets.get('op0.amount')).toBe(0);
+    });
+
+    it('contributes nothing while the sea is calm — silence cannot dim the picture', () => {
+      const engine = createModulationEngine([
+        route({ source: 'swell:group', target: 'op0.amount', amount: 0.5, smoothing: 0.8 }),
+        route({ source: 'swell:set', target: 'op0.scale', amount: 0.5, smoothing: 0.8 }),
+      ]);
+      const calm: SwellState = { wave: 0, group: 0, set: 0, surge: 0 };
+      for (let i = 0; i < 600; i++) {
+        const { offsets } = engine.update(makeAudio(), i / 60, 1 / 60, calm);
+        expect(offsets.get('op0.amount')).toBe(0);
+        expect(offsets.get('op0.scale')).toBe(0);
+      }
+    });
   });
 
   it('reset() clears smoothing state', () => {

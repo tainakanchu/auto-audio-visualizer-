@@ -52,12 +52,34 @@ describe('synth/gl/reactions catalog', () => {
       }
       // 帯域は必ず rBass/rMid/rTreble 経由（= uEnergy でゲート済み）で読む。
       expect(/\buBass\b|\buMid\b|\buTreble\b/.test(r.glsl), `${r.id} reads a raw band`).toBe(false);
+      // うねりも rSwell / rSet 経由。生 uniform を直に読むと、駆動値の定義が
+      // REACTION_DRIVE_GLSL の 1 箇所に集まらなくなる。
+      expect(/\buSwell\w*\b/.test(r.glsl), `${r.id} reads a raw swell uniform`).toBe(false);
     }
   });
 
-  it('every reaction is driven by the beat or the level, never by bare time alone', () => {
+  it('every reaction is driven by the beat, the level or the swell, never by bare time alone', () => {
     for (const r of ALL_REACTIONS) {
-      expect(/\brPunch\b|\brEnergy\b|\brBass\b|\brMid\b|\brTreble\b/.test(r.glsl), r.id).toBe(true);
+      expect(
+        /\brPunch\b|\brEnergy\b|\brBass\b|\brMid\b|\brTreble\b|\brSwell\b|\brSet\b/.test(r.glsl),
+        r.id,
+      ).toBe(true);
+    }
+  });
+
+  /**
+   * うねり駆動のリアクションは「音量側の量」で効くので、暗くする方向に使うと
+   * 音が鳴っている間ずっと暗いままになる。暗転してよいのは拍のエンベロープ
+   * (`rPunch`) だけ、という不変条件 2 を形の上で担保する。
+   */
+  it('swell-driven reactions never darken — that is reserved for the beat envelope', () => {
+    const swellDriven = ALL_REACTIONS.filter((r) => /\brSwell\b|\brSet\b/.test(r.glsl));
+    expect(swellDriven.length).toBeGreaterThan(0);
+    for (const r of swellDriven) {
+      if (r.stage !== 'color') continue;
+      // 色段で暗くする形（col *= 1.0 - k / col -= …）を使っていないこと。
+      expect(/col[\w.]*\s*-=/.test(r.glsl), `${r.id} subtracts from col`).toBe(false);
+      expect(/\*\s*\(1\.0\s*-/.test(r.glsl), `${r.id} scales col down`).toBe(false);
     }
   });
 

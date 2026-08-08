@@ -66,7 +66,33 @@ export const ROUTE_SOURCES: readonly RouteSource[] = [
   { id: 'audio:treble', weight: 2, drive: 1.3, pulse: false },
   { id: 'audio:level', weight: 2, drive: 2.2, pulse: false },
   { id: 'audio:beatIntensity', weight: 3, drive: 1.0, pulse: true },
+  // うねり。audio:* が「今この瞬間の音量」なのに対し、こちらは秒〜分スケールの
+  // 時間軸を持ち込む。合計 weight 12 に対して 3 なので、4 本に 1 本くらいの割合。
+  //
+  // `pulse: false` なのは、pulse フラグが「拍で立ち上がって減衰するか」を意味して
+  // いて、平滑を 0.05〜0.15 秒の短いものに切り替えるから。うねりは既に秒〜十秒
+  // スケールで滑らかなので、拍用の短い平滑を当てても意味が無い。非パルス側の
+  // 0.4〜1.6 秒が掛かるが、元が滑らかなぶん二重平滑は無害（位相が少し遅れるだけ）。
+  //
+  // `drive` は「そのソースが実際にどこまで振れるか」の補正。うねりは定常状態でも
+  // p99 が 0.83 前後で 1.0 まで使い切らないので、そのぶん持ち上げる。
+  { id: 'swell:group', weight: 2, drive: 1.6, pulse: false },
+  { id: 'swell:set', weight: 1, drive: 1.8, pulse: false },
 ];
+
+/**
+ * `swell:wave` と `swell:surge` は候補プールに**入れていない**。
+ *
+ * - `swell:wave` は約 1.2 秒周期の搬送波。route の平滑（最短 0.4 秒）を通しても
+ *   まだ速く、derive が引き当てると「拍と無関係にせわしなく脈打つ」画になる。
+ *   拍で脈打たせたいなら `audio:beatIntensity` の仕事。
+ * - `swell:surge` は定常状態の平均が 0.52、最小でも 0.26 と、下限が高い。unipolar
+ *   固定の derive では「常時ほぼ最大まで足しっぱなし」に近く、変調として動かない。
+ *
+ * どちらも validate.ts の `SWELL_SOURCES` には入っているので、**手で組んだ Patch からは
+ * 普通に使える**（proposePatch は validate だけを通る）。自動生成が安全側に
+ * 倒しているだけで、機能として塞いでいるわけではない。
+ */
 
 /**
  * derive が変調してよいパラメータ名の**許可リスト**を、「何に効くか」で分類した
