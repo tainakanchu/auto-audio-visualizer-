@@ -800,3 +800,159 @@ div.tl-issues {
   font-size: 11px;
   cursor: pointer;
 }
+
+/* ---- Scene Deck window (?deck=1) ----
+   The fullscreen overlay sets html/body/#root to overflow:hidden; the deck is a
+   readable 4x2 bank that must be allowed to scroll. */
+html.deck-mode,
+html.deck-mode body,
+html.deck-mode #root {
+  overflow: auto;
+  height: auto;
+  min-height: 100%;
+  background: #0c0e14;
+}
+
+.deck-root {
+  min-height: 100%;
+  padding: 16px 18px 24px;
+  color: var(--panel-fg);
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  overflow: auto;
+}
+
+.deck-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.deck-title {
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+}
+
+.deck-sub {
+  margin-top: 2px;
+  font-size: 11px;
+  color: var(--panel-fg-dim);
+}
+
+.deck-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.deck-status {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px 14px;
+  font-size: 11px;
+  color: var(--panel-fg-dim);
+  font-variant-numeric: tabular-nums;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
+.deck-status strong {
+  color: var(--panel-fg);
+  font-weight: 600;
+  text-transform: none;
+}
+
+.deck-banner {
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel-bg);
+  color: var(--panel-fg);
+  font-size: 13px;
+}
+
+.deck-banner.warn {
+  border-color: rgba(255, 180, 80, 0.45);
+  color: hsl(32, 90%, 72%);
+}
+
+.deck-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-rows: repeat(2, minmax(132px, auto));
+  gap: 10px;
+}
+
+.deck-slot {
+  appearance: none;
+  text-align: left;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-height: 132px;
+  padding: 12px;
+  border-radius: 14px;
+  background: var(--panel-bg);
+  border: 1px solid var(--panel-border);
+  color: var(--panel-fg);
+  cursor: pointer;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease,
+    background 0.15s ease;
+}
+
+.deck-slot:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+
+.deck-slot.active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.deck-slot-top {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.deck-slot-key {
+  font-size: 18px;
+  font-weight: 650;
+  font-variant-numeric: tabular-nums;
+}
+
+.deck-slot-label {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--panel-fg-dim);
+}
+
+.deck-slot-detail {
+  flex: 1;
+  font-size: 12px;
+  color: var(--panel-fg);
+  line-height: 1.35;
+}
+
+.deck-chip {
+  width: 100%;
+  height: 10px;
+  border-radius: 999px;
+  border: 1px solid var(--panel-border);
+}
+
+@media (max-width: 720px) {
+  .deck-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    grid-template-rows: none;
+  }
+}
