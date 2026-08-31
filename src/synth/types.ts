@@ -156,3 +156,24 @@ export const DEFAULT_TRANSITION: TransitionSpec = {
   topologyMs: 2000,
   easing: 'easeInOut',
 };
+
+export type TransitionPresetId = 'default' | 'slow' | 'cut';
+
+/** default = DEFAULT_TRANSITION / slow = 各 ms ×2 / cut = 全 120ms。easing は共通。 */
+export const TRANSITION_PRESETS: Record<TransitionPresetId, TransitionSpec> = {
+  default: DEFAULT_TRANSITION,
+  slow: {
+    paletteMs: DEFAULT_TRANSITION.paletteMs * 2,
+    parameterMs: DEFAULT_TRANSITION.parameterMs * 2,
+    modulationMs: DEFAULT_TRANSITION.modulationMs * 2,
+    topologyMs: DEFAULT_TRANSITION.topologyMs * 2,
+    easing: DEFAULT_TRANSITION.easing,
+  },
+  cut: {
+    paletteMs: 120,
+    parameterMs: 120,
+    modulationMs: 120,
+    topologyMs: 120,
+    easing: DEFAULT_TRANSITION.easing,
+  },
+};

@@ -46,8 +46,8 @@ const DEFAULT_ROOM_HOST = 'auto-audio-visualizer.<account>.workers.dev';
 /** 接続からコマンド完了までの全体上限。bridge も synth も無言のまま固まる場合の保険。 */
 const OVERALL_TIMEOUT_MS = 20_000;
 
-// 由来: src/synth/types.ts の DEFAULT_TRANSITION と src/ui/TimelinePanel.tsx の
-// TRANSITION_PRESETS を写したもの（CLI は .ts を import できないため複製）。
+// 由来: src/synth/types.ts の TRANSITION_PRESETS を写したもの
+// （CLI は .ts を import できないため複製）。
 // default = DEFAULT_TRANSITION / slow = 各 ms を 2 倍 / cut = 全て 120ms。easing は 3 つとも 'easeInOut'。
 const TRANSITION_PRESETS = {
   default: {

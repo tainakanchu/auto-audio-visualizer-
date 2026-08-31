@@ -11,8 +11,8 @@ import type {
   TimeAnchor,
   VisualEvent,
 } from '../synth/timeline';
-import type { ImageRef, TransitionSpec, VisualOperator, VisualPatch } from '../synth/types';
-import { DEFAULT_TRANSITION } from '../synth/types';
+import type { ImageRef, TransitionPresetId, VisualOperator, VisualPatch } from '../synth/types';
+import { TRANSITION_PRESETS } from '../synth/types';
 import { randomSeed } from '../variation/generate';
 
 interface TimelinePanelProps {
@@ -21,26 +21,6 @@ interface TimelinePanelProps {
 
 /** Anchor unit selectable in the add-event form. */
 type AddUnit = 'sec' | 'bars' | 'external';
-
-type PresetId = 'default' | 'slow' | 'cut';
-
-const TRANSITION_PRESETS: Record<PresetId, TransitionSpec> = {
-  default: DEFAULT_TRANSITION,
-  slow: {
-    paletteMs: DEFAULT_TRANSITION.paletteMs * 2,
-    parameterMs: DEFAULT_TRANSITION.parameterMs * 2,
-    modulationMs: DEFAULT_TRANSITION.modulationMs * 2,
-    topologyMs: DEFAULT_TRANSITION.topologyMs * 2,
-    easing: DEFAULT_TRANSITION.easing,
-  },
-  cut: {
-    paletteMs: 120,
-    parameterMs: 120,
-    modulationMs: 120,
-    topologyMs: 120,
-    easing: DEFAULT_TRANSITION.easing,
-  },
-};
 
 /** Pretty-print the patch through the canonical (key-sorted) serialization. */
 function formatPatch(patch: VisualPatch | null): string {
@@ -239,7 +219,7 @@ export function TimelinePanel(props: TimelinePanelProps): React.ReactElement {
   const [offset, setOffset] = useState(1);
   const [externalId, setExternalId] = useState('drop');
   const [seedDraft, setSeedDraft] = useState('');
-  const [preset, setPreset] = useState<PresetId>('default');
+  const [preset, setPreset] = useState<TransitionPresetId>('default');
   const [addIssue, setAddIssue] = useState<string | null>(null);
   const counterRef = useRef(0);
 
@@ -582,7 +562,7 @@ export function TimelinePanel(props: TimelinePanelProps): React.ReactElement {
               data-testid="tl-add-preset"
               aria-label="Transition preset"
               value={preset}
-              onChange={(e) => setPreset(e.target.value as PresetId)}
+              onChange={(e) => setPreset(e.target.value as TransitionPresetId)}
             >
               <option value="default">default</option>
               <option value="slow">slow</option>
