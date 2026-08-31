@@ -257,7 +257,7 @@ LLM / 人間のディレクターが GLSL を読んで見た目を**推測**す�
 pnpm vj:preview --contact-sheet artifacts/contact-sheet.png
 
 # seed から derive した Patch のフィルムストリップ（複数時刻）
-pnpm vj:preview --seed humid-night-market artifacts/seed.png
+pnpm vj:preview --seed take-1 artifacts/seed.png
 
 # 手書き / 生成した VisualPatch JSON
 pnpm vj:preview path/to/patch.json artifacts/patch.png

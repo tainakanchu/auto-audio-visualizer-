@@ -108,10 +108,10 @@ room 専用オプション:
 
 例:
   node scripts/vj-ctl.mjs state
-  node scripts/vj-ctl.mjs seed "humid-night-market"
+  node scripts/vj-ctl.mjs seed "take-1"
   node scripts/vj-ctl.mjs blend screen
   node scripts/vj-ctl.mjs image ./logo.png --name event-logo
-  node scripts/vj-ctl.mjs event add --in 30 --seed rainy-qilou --transition slow
+  node scripts/vj-ctl.mjs event add --in 30 --seed take-2 --transition slow
   node scripts/vj-ctl.mjs event add --bar 8 --patch /tmp/patch.json
   node scripts/vj-ctl.mjs event add --cue drop --patch /tmp/patch.json --label "drop"
   node scripts/vj-ctl.mjs lock 60
