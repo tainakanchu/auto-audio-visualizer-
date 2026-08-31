@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { createCatalog } from './catalog';
 import { DEFAULT_BUDGETS, estimateCost, fitsBudget } from './cost';
-import { derivePatch } from './derive';
+import { derivePatch, rerollPatch, SAFE_TARGET_PARAMS } from './derive';
 import { createInlineCatalog, inlineCatalog } from './generators';
 import type { InlineGenerator } from './generators/types';
-import { serializePatch } from './schema';
+import { CURRENT_SCHEMA_VERSION, serializePatch } from './schema';
 import type { QualityTier, VisualOperator, VisualPatch } from './types';
 import { validatePatch } from './validate';
 
@@ -71,6 +71,17 @@ function primarySourceId(patch: VisualPatch): string | undefined {
 
 function sourceOps(patch: VisualPatch): VisualOperator[] {
   return patch.operators.filter((op) => op.id.startsWith('src'));
+}
+
+/** The part of an operator that must survive a reroll unchanged: its "topology" identity. */
+function topologyOf(
+  patch: VisualPatch,
+): Array<Pick<VisualOperator, 'id' | 'generatorId' | 'generatorVersion'>> {
+  return patch.operators.map((op) => ({
+    id: op.id,
+    generatorId: op.generatorId,
+    generatorVersion: op.generatorVersion,
+  }));
 }
 
 describe('synth/derive', () => {
@@ -532,4 +543,262 @@ describe('synth/derive', () => {
       }
     });
   });
+
+  describe('reroll', () => {
+    const BASE_SEEDS = [
+      'reroll-base-alpha',
+      'reroll-base-bravo',
+      'reroll-base-charlie',
+      'reroll-base-delta',
+      'reroll-base-echo',
+      'reroll-base-foxtrot',
+    ];
+
+    it('preserves topology (id/generatorId/generatorVersion/order) across many starting seeds', () => {
+      for (const baseSeed of BASE_SEEDS) {
+        const original = derivePatch(baseSeed, { catalog: inlineCatalog });
+        for (let i = 0; i < 10; i++) {
+          const rerolled = rerollPatch(original, `${baseSeed}-reroll-${i}`, {
+            catalog: inlineCatalog,
+          });
+          expect(topologyOf(rerolled), `base=${baseSeed} reroll=${i}`).toEqual(
+            topologyOf(original),
+          );
+        }
+      }
+    });
+
+    it('a full reroll usually changes palette, composition, and at least one operator parameter', () => {
+      const n = 30;
+      let paletteChanged = 0;
+      let compositionChanged = 0;
+      let anyParamChanged = 0;
+
+      for (let i = 0; i < n; i++) {
+        const baseSeed = `reroll-content-base-${i}`;
+        const original = derivePatch(baseSeed, { catalog: inlineCatalog });
+        const rerolled = rerollPatch(original, `reroll-content-next-${i}`, {
+          catalog: inlineCatalog,
+        });
+
+        if (!deepEqual(rerolled.palette, original.palette)) paletteChanged++;
+        if (!deepEqual(rerolled.composition, original.composition)) compositionChanged++;
+        const paramsChanged = rerolled.operators.some((op, idx) => {
+          const before = original.operators[idx]!;
+          return !deepEqual(op.parameters, before.parameters);
+        });
+        if (paramsChanged) anyParamChanged++;
+      }
+
+      // "Usually" — not every draw has to move (a coordinate could coincidentally
+      // repeat), but the overwhelming majority must, or the reroll isn't doing
+      // its job. Mirrors the statistical style already used in this file
+      // (e.g. "routes length is 0-4 and usually >=1").
+      expect(paletteChanged, 'palette').toBeGreaterThan(n * 0.8);
+      expect(compositionChanged, 'composition').toBeGreaterThan(n * 0.8);
+      expect(anyParamChanged, 'parameters').toBeGreaterThan(n * 0.8);
+    });
+
+    describe('partial flags reroll only the selected category', () => {
+      const n = 25;
+
+      it('parameters: true (routes/palette/composition: false) — only parameters usually change', () => {
+        let paramsChanged = 0;
+        for (let i = 0; i < n; i++) {
+          const baseSeed = `reroll-only-params-base-${i}`;
+          const original = derivePatch(baseSeed, { catalog: inlineCatalog });
+          const rerolled = rerollPatch(original, `reroll-only-params-next-${i}`, {
+            catalog: inlineCatalog,
+            parameters: true,
+            routes: false,
+            palette: false,
+            composition: false,
+          });
+
+          expect(rerolled.routes, `seed ${i}`).toEqual(original.routes);
+          expect(rerolled.palette, `seed ${i}`).toEqual(original.palette);
+          expect(rerolled.composition, `seed ${i}`).toEqual(original.composition);
+          expect(topologyOf(rerolled), `seed ${i}`).toEqual(topologyOf(original));
+
+          const changed = rerolled.operators.some((op, idx) => {
+            const before = original.operators[idx]!;
+            return !deepEqual(op.parameters, before.parameters);
+          });
+          if (changed) paramsChanged++;
+        }
+        expect(paramsChanged, 'parameters actually changed').toBeGreaterThan(n * 0.8);
+      });
+
+      it('routes: true (parameters/palette/composition: false) — only routes usually change', () => {
+        let routesChanged = 0;
+        for (let i = 0; i < n; i++) {
+          const baseSeed = `reroll-only-routes-base-${i}`;
+          const original = derivePatch(baseSeed, { catalog: inlineCatalog });
+          const rerolled = rerollPatch(original, `reroll-only-routes-next-${i}`, {
+            catalog: inlineCatalog,
+            parameters: false,
+            routes: true,
+            palette: false,
+            composition: false,
+          });
+
+          expect(rerolled.palette, `seed ${i}`).toEqual(original.palette);
+          expect(rerolled.composition, `seed ${i}`).toEqual(original.composition);
+          expect(rerolled.operators, `seed ${i}`).toEqual(original.operators);
+
+          if (!deepEqual(rerolled.routes, original.routes)) routesChanged++;
+        }
+        expect(routesChanged, 'routes actually changed').toBeGreaterThan(n * 0.8);
+      });
+
+      it('palette: true (parameters/routes/composition: false) — only palette usually changes', () => {
+        let paletteChanged = 0;
+        for (let i = 0; i < n; i++) {
+          const baseSeed = `reroll-only-palette-base-${i}`;
+          const original = derivePatch(baseSeed, { catalog: inlineCatalog });
+          const rerolled = rerollPatch(original, `reroll-only-palette-next-${i}`, {
+            catalog: inlineCatalog,
+            parameters: false,
+            routes: false,
+            palette: true,
+            composition: false,
+          });
+
+          expect(rerolled.routes, `seed ${i}`).toEqual(original.routes);
+          expect(rerolled.composition, `seed ${i}`).toEqual(original.composition);
+          expect(rerolled.operators, `seed ${i}`).toEqual(original.operators);
+
+          if (!deepEqual(rerolled.palette, original.palette)) paletteChanged++;
+        }
+        expect(paletteChanged, 'palette actually changed').toBeGreaterThan(n * 0.8);
+      });
+
+      it('composition: true (parameters/routes/palette: false) — only composition usually changes', () => {
+        let compositionChanged = 0;
+        for (let i = 0; i < n; i++) {
+          const baseSeed = `reroll-only-composition-base-${i}`;
+          const original = derivePatch(baseSeed, { catalog: inlineCatalog });
+          const rerolled = rerollPatch(original, `reroll-only-composition-next-${i}`, {
+            catalog: inlineCatalog,
+            parameters: false,
+            routes: false,
+            palette: false,
+            composition: true,
+          });
+
+          expect(rerolled.routes, `seed ${i}`).toEqual(original.routes);
+          expect(rerolled.palette, `seed ${i}`).toEqual(original.palette);
+          expect(rerolled.operators, `seed ${i}`).toEqual(original.operators);
+
+          if (!deepEqual(rerolled.composition, original.composition)) compositionChanged++;
+        }
+        expect(compositionChanged, 'composition actually changed').toBeGreaterThan(n * 0.8);
+      });
+    });
+
+    it('is deterministic: same (patch, seed, opts) → identical serializePatch output', () => {
+      const original = derivePatch('reroll-determinism-base', { catalog: inlineCatalog });
+      const a = serializePatch(
+        rerollPatch(original, 'reroll-determinism-next', { catalog: inlineCatalog }),
+      );
+      const b = serializePatch(
+        rerollPatch(original, 'reroll-determinism-next', { catalog: inlineCatalog }),
+      );
+      expect(a).toBe(b);
+    });
+
+    it('safety invariants hold across many (base seed × reroll seed) combinations', () => {
+      let combos = 0;
+      for (const baseSeed of BASE_SEEDS) {
+        const original = derivePatch(baseSeed, { catalog: inlineCatalog });
+        for (let i = 0; i < 12; i++) {
+          const rerolled = rerollPatch(original, `${baseSeed}-safety-${i}`, {
+            catalog: inlineCatalog,
+          });
+          combos++;
+          for (const route of rerolled.routes) {
+            const paramId = route.target.slice(route.target.indexOf('.') + 1);
+            expect(SAFE_TARGET_PARAMS.has(paramId), `${baseSeed}#${i}: ${route.target}`).toBe(true);
+            expect(route.polarity, `${baseSeed}#${i}: ${route.target}`).toBe('unipolar');
+            expect(route.amount, `${baseSeed}#${i}: ${route.target}`).toBeGreaterThan(0);
+            expect(route.source, `${baseSeed}#${i}: ${route.target}`).not.toBe('audio:beatPhase');
+            expect(route.source, `${baseSeed}#${i}: ${route.target}`).not.toBe('audio:barPhase');
+          }
+        }
+      }
+      // >=50 seeds requirement (BASE_SEEDS.length * 12 = 72).
+      expect(combos).toBeGreaterThanOrEqual(50);
+    });
+
+    it('validatePatch passes across many reroll seeds, from several starting topologies', () => {
+      const catalog = defCatalogFrom();
+      let combos = 0;
+      for (const baseSeed of BASE_SEEDS) {
+        const original = derivePatch(baseSeed, { catalog: inlineCatalog });
+        for (let i = 0; i < 12; i++) {
+          const seed = `${baseSeed}-validate-${i}`;
+          const rerolled = rerollPatch(original, seed, { catalog: inlineCatalog });
+          combos++;
+          const issues = validatePatch(rerolled, catalog);
+          expect(issues, `base=${baseSeed} reroll=${seed}: ${JSON.stringify(issues)}`).toEqual([]);
+        }
+      }
+      expect(combos).toBeGreaterThanOrEqual(50);
+    });
+
+    it('preserves qualityTier and images untouched', () => {
+      const stampGen = inlineCatalog.get('stamp')!;
+      const modGen = inlineCatalog.get('repeat')!;
+      const matGen = inlineCatalog.get('neon')!;
+      const mkOp = (id: string, gen: InlineGenerator): VisualOperator => ({
+        id,
+        generatorId: gen.def.id,
+        generatorVersion: gen.def.version,
+        parameters: Object.fromEntries(gen.def.parameters.map((p) => [p.id, p.default])),
+      });
+      const original: VisualPatch = {
+        schemaVersion: CURRENT_SCHEMA_VERSION,
+        seed: 'reroll-images-base',
+        operators: [mkOp('src0', stampGen), mkOp('mod0', modGen), mkOp('mat0', matGen)],
+        routes: [],
+        palette: { mode: 'mono', hueOffset: 10, saturation: 40, lightness: 55 },
+        composition: { symmetry: 2, scale: 1.1, speed: 0.4 },
+        qualityTier: 'high', // deliberately non-default (derivePatch's own default is 'medium')
+        images: { 'src0.image': { name: 'my-logo.png', hash: 'deadbeef' } },
+      };
+
+      const rerolled = rerollPatch(original, 'reroll-images-next', { catalog: inlineCatalog });
+
+      expect(rerolled.qualityTier).toBe('high');
+      expect(rerolled.images).toEqual({ 'src0.image': { name: 'my-logo.png', hash: 'deadbeef' } });
+    });
+
+    it('throws a clear error when an operator references a generator missing from the catalog', () => {
+      const original = derivePatch('reroll-missing-gen-base', { catalog: inlineCatalog });
+      const missingId = original.operators[0]!.generatorId;
+      const reduced = createInlineCatalog(
+        inlineCatalog.all().filter((g) => g.def.id !== missingId),
+      );
+      expect(() => rerollPatch(original, 'reroll-missing-gen-next', { catalog: reduced })).toThrow(
+        /not found in catalog/,
+      );
+      expect(() => rerollPatch(original, 'reroll-missing-gen-next', { catalog: reduced })).toThrow(
+        new RegExp(missingId),
+      );
+    });
+  });
 });
+
+/** Structural equality without relying on object identity (mirrors `toEqual` semantics). */
+function deepEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (typeof a !== typeof b) return false;
+  if (a === null || b === null) return false;
+  if (typeof a !== 'object') return false;
+  const aKeys = Object.keys(a as Record<string, unknown>);
+  const bKeys = Object.keys(b as Record<string, unknown>);
+  if (aKeys.length !== bKeys.length) return false;
+  return aKeys.every((k) =>
+    deepEqual((a as Record<string, unknown>)[k], (b as Record<string, unknown>)[k]),
+  );
+}

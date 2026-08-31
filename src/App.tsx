@@ -4,6 +4,9 @@ import { Renderer } from './render/Renderer';
 import { scenes, sceneByIndex, sceneIndexById } from './scenes';
 import { initBridgeClient } from './synth/bridgeClient';
 import { getSynthControl } from './synth/control';
+import { rerollPatch } from './synth/derive';
+import { inlineCatalog } from './synth/generators';
+import { serializePatch } from './synth/schema';
 import { resolveBlendMode } from './ui/blend';
 import { ControlPanel } from './ui/ControlPanel';
 import { resolveOverlaySceneId } from './ui/overlay';
@@ -252,6 +255,25 @@ export function App(): React.ReactElement {
     update({ seed: randomSeed() });
   }, [update]);
 
+  // ---- Reroll details, same topology: keep the exact operators (id/generatorId/
+  // generatorVersion/order) that Semantic Synth currently has — and with them the
+  // audio-reactive glitch set gl/reactions.ts picked for that topology — but redraw
+  // everything else (parameters/routes/palette/composition) from a fresh seed. This
+  // is deliberately a separate action from `reroll` above (which swaps the whole
+  // topology via the `seed` setting): `reroll` is the "new shape" gacha, this is the
+  // "same shape, new details" one. Only meaningful on the semantic-synth scene, which
+  // is the only scene with a VisualPatch (`currentPatch`) to reroll.
+  const rerollDetails = useCallback(() => {
+    const control = getSynthControl();
+    const current = control.getState().currentPatch;
+    // No semantic-synth scene active (or it hasn't derived a patch yet) — nothing to
+    // reroll. Backstops the disabled-button gating in ControlPanel for the moment
+    // right after switching scenes, before the first frame has run.
+    if (!current) return;
+    const next = rerollPatch(current, randomSeed(), { catalog: inlineCatalog });
+    control.proposePatch(JSON.parse(serializePatch(next)) as unknown);
+  }, []);
+
   // ---- Tempo controls (delegate to the engine's TempoTracker) ----
   const onTap = useCallback(() => {
     engineRef.current?.tapTempo();
@@ -387,6 +409,10 @@ export function App(): React.ReactElement {
         case 'R':
           reroll();
           break;
+        case 'd':
+        case 'D':
+          rerollDetails();
+          break;
         case 't':
         case 'T':
           onTap();
@@ -397,7 +423,7 @@ export function App(): React.ReactElement {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [setScene, shiftScene, update, reroll, onTap]);
+  }, [setScene, shiftScene, update, reroll, rerollDetails, onTap]);
 
   // ---- 外部 CLI からの Bridge（?bridge=1 のときだけ有効） ----
   useEffect(() => {
@@ -429,6 +455,7 @@ export function App(): React.ReactElement {
         onShiftScene={shiftScene}
         onToggleFullscreen={() => void toggleFullscreen()}
         onReroll={reroll}
+        onRerollDetails={rerollDetails}
         onTap={onTap}
         onTempoMultiply={onTempoMultiply}
         onTempoAuto={onTempoAuto}
