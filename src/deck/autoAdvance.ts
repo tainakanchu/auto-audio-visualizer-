@@ -118,10 +118,12 @@ export function useAutoAdvance(opts: AutoAdvanceOptions): AutoAdvanceHandle {
     return () => window.clearInterval(id);
   }, [mode, connected, seconds, size, fireNext, epoch]);
 
-  // 小節モードに入った／間隔が変わったときは「今から N 小節」に揃える。
+  // 小節カウントの原点を「今」に揃える。mode/bars だけでなく、未接続や
+  // size=0 のままアームしたあとに host/bank が揃ったときもリセットしないと
+  // shouldAdvanceBars(liveBarCount, 0, n) が即 true になり初回で発火する。
   useEffect(() => {
     lastFiredBarRef.current = Math.floor(barCountRef.current);
-  }, [mode, bars]);
+  }, [mode, bars, connected, size]);
 
   useEffect(() => {
     if (mode !== 'bars' || !connected || size <= 0) return;

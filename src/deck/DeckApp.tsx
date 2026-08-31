@@ -122,6 +122,7 @@ function formatAutoStatus(
 export function DeckApp(): React.ReactElement {
   const channelRef = useRef<BroadcastChannel | null>(null);
   const gotStateRef = useRef(false);
+  const lastStateAtRef = useRef(0);
   const bankRef = useRef<DeckScene[] | null>(null);
   const sharedRef = useRef<DeckSharedState | null>(null);
   const presetRef = useRef<TransitionPresetId>('default');
@@ -248,6 +249,7 @@ export function DeckApp(): React.ReactElement {
     const channel = new BroadcastChannel(DECK_CHANNEL);
     channelRef.current = channel;
     gotStateRef.current = false;
+    lastStateAtRef.current = 0;
 
     const requestState = (): void => {
       channel.postMessage({ kind: 'deck:requestState' } satisfies DeckRequest);
@@ -264,6 +266,7 @@ export function DeckApp(): React.ReactElement {
       const parsed = parseDeckResponse(ev.data);
       if (parsed === null) return;
       if (parsed.kind === 'deck:state') {
+        lastStateAtRef.current = Date.now();
         gotStateRef.current = true;
         stopRetry();
         setMissingHost(false);
@@ -289,6 +292,13 @@ export function DeckApp(): React.ReactElement {
     let pollId: ReturnType<typeof setTimeout> | null = null;
     const schedulePoll = (): void => {
       pollId = window.setTimeout(() => {
+        // 最後の deck:state から CONNECT_TIMEOUT_MS 応答が無ければ切断。
+        // これをしないとメイン窓を閉じても auto が死んだ channel に打ち続ける。
+        if (gotStateRef.current && Date.now() - lastStateAtRef.current >= CONNECT_TIMEOUT_MS) {
+          gotStateRef.current = false;
+          setShared(null);
+          setMissingHost(true);
+        }
         requestState();
         schedulePoll();
       }, pollMsRef.current);
