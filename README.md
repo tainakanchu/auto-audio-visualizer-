@@ -42,6 +42,7 @@ pnpm dev
 | `B` | 背景（黒 / 透過）の切り替え |
 | `R` | シード（look gacha）を引き直す（ガチャ） |
 | `D` | Semantic Synth の Generator 構成はそのまま、細部だけ引き直す（reroll details） |
+| `S` | Scene Deck 窓を開く（`?deck=1`。BroadcastChannel、bridge 不要） |
 | `T` | タップテンポ（手動 BPM 入力） |
 
 パネルはマウスを止めると約 3 秒で自動的にフェードアウトし、カーソルも隠れます。マウスを動かすと再表示されます。
@@ -140,6 +141,30 @@ Generator は 105 個中 8 個しか音の uniform を読まないので、**画
 
 画面右側の **Timeline パネル**では、数秒〜数小節先の演出イベント（シード変更やトランジションなど）をあらかじめ予約でき、演出の流れを JSON として記録・再生できます。詳細は Issue #3 の RFC を参照してください。
 
+## Scene Deck（別窓ポン出し）
+
+Resolume のシーン一覧のように、**別窓で 8 スロットのバリエーションをポン出し**できます。メイン窓（semantic-synth）のいまの Patch をベースに、同じ Generator 構成のままパラメータ違いを 8 面自動生成し、キーボードで即遷移させます。通信は同一オリジンの **BroadcastChannel**（`vj-deck-v1`）だけで、`pnpm bridge` も `?bridge=1` も不要です。
+
+デッキ窓では AudioEngine / Renderer は起動しません（マイク許可プロンプトも、常時の GPU 負荷も無し）。
+
+### 開き方
+
+- コントロールパネルの **Scene Deck** ボタン
+- メイン窓で **`S`**（`D` は reroll details。Issue #51 では `D` と書いてあったが、PR #49 で `D` が細部ガチャに使われているため `S`）
+- URL に `?deck=1`（または `?deck=true`）。窓名 `vj-scene-deck` なので連打しても窓は増えない
+
+### 使い方
+
+1. メイン窓を semantic-synth にする
+2. デッキ窓を開くと、現行 Patch から 8 面（BASE + V1…V7）が生成される。WebGL2 があればサムネイルが 1 枚ずつ埋まる（無ければ色チップのまま）
+3. `1`–`8` でポン出し。`Shift+数字` は選択中プリセットを無視して cut。`T` でトランジションを cut → default → slow と巡回
+4. `←` `→` `↑` `↓` で 4×2 のカーソル、`Enter` / `Space` でそのスロットを出す
+5. `R` でライブ Patch を取り直して再生成、`G` で base を保ったまま bankSeed ガチャ
+6. 自動送り: `A` で ON/OFF、`M` で秒 / 小節、`-` / `=` で間隔。順序はツールバーの seq / rnd（rnd はいまのスロット以外）
+7. 小節モードはメイン窓が tempo LOCK のときだけ進む。外れたら警告して待つ。切断中は自動送りは止まる
+
+手動でポン出した位置から自動送りが続きます（秒タイマーはリセット）。バンクはトリガーのたびに作り直さないので、「さっきの 3 番」が消えません。Claude Code / `vj-tweak` / seed ガチャでメインの画がバンクの外に出たら **BASE CHANGED** が出るので、`R` で取り直してください。
+
 ## テンポ同期（BPM 検出）
 
 入力音声からリアルタイムに BPM を推定し、ビートグリッドを生成して各シーンのパルスやオートサイクルを音楽の拍に合わせます。パネルの **Tempo** セクションに現在の BPM とステータスチップ、拍位置を示す 4 つのドット（1 拍目＝ダウンビートを強調）が表示されます。
@@ -177,6 +202,7 @@ Generator は 105 個中 8 個しか音の uniform を読まないので、**画
 | `overlay` | `overlay=rings` | シーンを2層合成する（下＝`scene`、上＝`overlay`）。未指定/`none`/`off`/`0` で無効 |
 | `blend` | `blend=screen` | オーバーレイ合成モード（`normal` / `screen` / `multiply` / `overlay` / `difference` / `exclusion` / `color-dodge` / `hard-light` / `lighten` / `darken`）。オーバーレイ有効時のみ。未指定は `normal`（従来どおり） |
 | `mirror` | `mirror=1` | 中継に表示専用（mirror）として接続する。`room` または `bridge` と併用。応答は返さず同じコマンドを映像に反映するだけ |
+| `deck` | `deck=1` | Scene Deck 窓として開く（`1` / `true`）。Audio / Renderer は起動しない |
 
 例: 透過背景・パネル非表示・パーティクルシーンで起動
 

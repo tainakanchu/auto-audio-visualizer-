@@ -4,17 +4,32 @@ import { serializePatch } from '../synth/schema';
 import type { TransitionPresetId, VisualPatch } from '../synth/types';
 import { randomSeed } from '../variation/generate';
 import {
+  AUTO_BARS_DEFAULT,
+  AUTO_SECONDS_DEFAULT,
+  AUTO_SECONDS_STEP,
+  clampAutoBars,
+  clampAutoSeconds,
+  useAutoAdvance,
+  type AutoKind,
+  type AutoMode,
+  type AutoOrder,
+} from './autoAdvance';
+import {
   DECK_CHANNEL,
   parseDeckResponse,
   type DeckRequest,
   type DeckSharedState,
 } from './protocol';
+import { createThumbRenderer, type ThumbRenderer } from './thumbs';
 import { buildSceneBank, type DeckScene } from './variations';
 
 const PRESET_CYCLE: TransitionPresetId[] = ['cut', 'default', 'slow'];
 const CONNECT_TIMEOUT_MS = 1500;
 const RETRY_MS = 1000;
 const POLL_MS = 500;
+const POLL_BARS_MS = 250;
+const GRID_COLS = 4;
+const GRID_ROWS = 2;
 
 function isEditableTarget(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
@@ -62,12 +77,57 @@ function formatLockRemain(nowSec: number, lockedUntilSec: number): string | null
   return `${n}s`;
 }
 
+function moveGridCursor(slot: number, code: string, size: number): number {
+  if (size <= 0) return 0;
+  const cols = GRID_COLS;
+  const rows = GRID_ROWS;
+  const bounded = ((slot % size) + size) % size;
+  const col = bounded % cols;
+  const row = Math.floor(bounded / cols);
+  let nextCol = col;
+  let nextRow = row;
+  switch (code) {
+    case 'ArrowLeft':
+      nextCol = (col + cols - 1) % cols;
+      break;
+    case 'ArrowRight':
+      nextCol = (col + 1) % cols;
+      break;
+    case 'ArrowUp':
+      nextRow = (row + rows - 1) % rows;
+      break;
+    case 'ArrowDown':
+      nextRow = (row + 1) % rows;
+      break;
+    default:
+      return bounded;
+  }
+  const next = nextRow * cols + nextCol;
+  return next >= size ? bounded : next;
+}
+
+function formatAutoStatus(
+  autoOn: boolean,
+  kind: AutoKind,
+  order: AutoOrder,
+  seconds: number,
+  bars: number,
+): string {
+  const interval = kind === 'seconds' ? `${seconds}s` : `${bars} bars`;
+  const ord = order === 'sequential' ? 'seq' : 'rnd';
+  if (!autoOn) return `off · ${interval} ${ord}`;
+  return `${interval} ${ord}`;
+}
+
 export function DeckApp(): React.ReactElement {
   const channelRef = useRef<BroadcastChannel | null>(null);
   const gotStateRef = useRef(false);
   const bankRef = useRef<DeckScene[] | null>(null);
   const sharedRef = useRef<DeckSharedState | null>(null);
   const presetRef = useRef<TransitionPresetId>('default');
+  const thumbsRef = useRef<ThumbRenderer | null>(null);
+  const cursorRef = useRef(0);
+  const pollMsRef = useRef(POLL_MS);
 
   const [shared, setShared] = useState<DeckSharedState | null>(null);
   const [missingHost, setMissingHost] = useState(false);
@@ -75,10 +135,20 @@ export function DeckApp(): React.ReactElement {
   const [bankBase, setBankBase] = useState<VisualPatch | null>(null);
   const [preset, setPreset] = useState<TransitionPresetId>('default');
   const [lastError, setLastError] = useState<string | null>(null);
+  const [cursor, setCursor] = useState(0);
+  const [playhead, setPlayhead] = useState(0);
+  const [autoOn, setAutoOn] = useState(false);
+  const [autoKind, setAutoKind] = useState<AutoKind>('seconds');
+  const [autoOrder, setAutoOrder] = useState<AutoOrder>('sequential');
+  const [autoSeconds, setAutoSeconds] = useState(AUTO_SECONDS_DEFAULT);
+  const [autoBars, setAutoBars] = useState(AUTO_BARS_DEFAULT);
+  const [thumbUrls, setThumbUrls] = useState<Array<string | null>>([]);
 
   bankRef.current = bank;
   sharedRef.current = shared;
   presetRef.current = preset;
+  cursorRef.current = cursor;
+  pollMsRef.current = autoOn && autoKind === 'bars' ? POLL_BARS_MS : POLL_MS;
 
   const postRequest = useCallback((req: DeckRequest): void => {
     channelRef.current?.postMessage(req);
@@ -97,6 +167,43 @@ export function DeckApp(): React.ReactElement {
     [postRequest],
   );
 
+  const connected = shared !== null;
+  const autoMode: AutoMode = autoOn ? autoKind : 'off';
+
+  const onAdvance = useCallback(
+    (slot: number): void => {
+      const scene = bankRef.current?.[slot];
+      if (!scene) return;
+      setPlayhead(slot);
+      setCursor(slot);
+      triggerSlot(scene, presetRef.current);
+    },
+    [triggerSlot],
+  );
+
+  const { noteManualTrigger, waitingForTempo } = useAutoAdvance({
+    mode: autoMode,
+    order: autoOrder,
+    seconds: autoSeconds,
+    bars: autoBars,
+    connected,
+    tempoLocked: shared?.tempoLocked ?? false,
+    barCount: shared?.barCount ?? 0,
+    currentSlot: playhead,
+    size: bank?.length ?? 0,
+    onAdvance,
+  });
+
+  const fireManual = useCallback(
+    (scene: DeckScene, nextPresetId: TransitionPresetId): void => {
+      setPlayhead(scene.slot);
+      setCursor(scene.slot);
+      triggerSlot(scene, nextPresetId);
+      noteManualTrigger();
+    },
+    [noteManualTrigger, triggerSlot],
+  );
+
   const rebuildFromLive = useCallback((): void => {
     const live = sharedRef.current?.currentPatch;
     if (!live) return;
@@ -110,6 +217,17 @@ export function DeckApp(): React.ReactElement {
     if (!base) return;
     setBank(buildSceneBank(base, randomSeed(), inlineCatalog));
   }, [bankBase]);
+
+  const bumpInterval = useCallback(
+    (dir: -1 | 1): void => {
+      if (autoKind === 'seconds') {
+        setAutoSeconds((s) => clampAutoSeconds(s + dir * AUTO_SECONDS_STEP));
+      } else {
+        setAutoBars((b) => clampAutoBars(b + dir));
+      }
+    },
+    [autoKind],
+  );
 
   useEffect(() => {
     const prevTitle = document.title;
@@ -167,12 +285,20 @@ export function DeckApp(): React.ReactElement {
       }, RETRY_MS);
     }, CONNECT_TIMEOUT_MS);
 
-    const pollId = window.setInterval(requestState, POLL_MS);
+    // bars オート中は 250ms。pollMsRef で切り替え、channel は張り直さない。
+    let pollId: ReturnType<typeof setTimeout> | null = null;
+    const schedulePoll = (): void => {
+      pollId = window.setTimeout(() => {
+        requestState();
+        schedulePoll();
+      }, pollMsRef.current);
+    };
+    schedulePoll();
 
     return () => {
       window.clearTimeout(missId);
       stopRetry();
-      window.clearInterval(pollId);
+      if (pollId !== null) window.clearTimeout(pollId);
       channel.close();
       channelRef.current = null;
     };
@@ -188,19 +314,92 @@ export function DeckApp(): React.ReactElement {
   }, [shared, bank]);
 
   useEffect(() => {
+    const renderer = createThumbRenderer();
+    thumbsRef.current = renderer;
+    return () => {
+      renderer.dispose();
+      thumbsRef.current = null;
+    };
+  }, []);
+
+  // サムネは 1 枚/フレーム。コンパイルが UI を止めないようにする。
+  useEffect(() => {
+    if (!bank) {
+      setThumbUrls([]);
+      return;
+    }
+    let cancelled = false;
+    let i = 0;
+    const urls: Array<string | null> = Array.from({ length: bank.length }, () => null);
+    setThumbUrls(urls.slice());
+
+    const tick = (): void => {
+      if (cancelled) return;
+      const renderer = thumbsRef.current;
+      const scene = bank[i];
+      if (!renderer || !scene) return;
+      urls[i] = renderer.render(scene.patch);
+      setThumbUrls(urls.slice());
+      i += 1;
+      if (i < bank.length) window.requestAnimationFrame(tick);
+    };
+    const raf = window.requestAnimationFrame(tick);
+    return () => {
+      cancelled = true;
+      window.cancelAnimationFrame(raf);
+    };
+  }, [bank]);
+
+  useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (isEditableTarget(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
+      const size = bankRef.current?.length ?? 0;
+
       if (e.code >= 'Digit1' && e.code <= 'Digit8') {
         const scene = bankRef.current?.[Number(e.code.slice(5)) - 1];
         if (!scene) return;
         e.preventDefault();
-        triggerSlot(scene, e.shiftKey ? 'cut' : presetRef.current);
+        fireManual(scene, e.shiftKey ? 'cut' : presetRef.current);
         return;
       }
+
       switch (e.code) {
+        case 'ArrowLeft':
+        case 'ArrowRight':
+        case 'ArrowUp':
+        case 'ArrowDown':
+          e.preventDefault();
+          setCursor((slot) => moveGridCursor(slot, e.code, size));
+          break;
+        case 'Enter':
+        case 'Space': {
+          const scene = bankRef.current?.[cursorRef.current];
+          if (!scene) return;
+          e.preventDefault();
+          fireManual(scene, presetRef.current);
+          break;
+        }
         case 'KeyT':
           e.preventDefault();
           setPreset((current) => nextPreset(current));
+          break;
+        case 'KeyA':
+          e.preventDefault();
+          setAutoOn((on) => !on);
+          break;
+        case 'KeyM':
+          e.preventDefault();
+          setAutoKind((kind) => (kind === 'seconds' ? 'bars' : 'seconds'));
+          break;
+        case 'Minus':
+        case 'NumpadSubtract':
+          e.preventDefault();
+          bumpInterval(-1);
+          break;
+        case 'Equal':
+        case 'NumpadAdd':
+          e.preventDefault();
+          bumpInterval(1);
           break;
         case 'KeyR':
           e.preventDefault();
@@ -220,9 +419,8 @@ export function DeckApp(): React.ReactElement {
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [gachaBank, rebuildFromLive, triggerSlot]);
+  }, [bumpInterval, fireManual, gachaBank, rebuildFromLive]);
 
-  const connected = shared !== null;
   const livePatch = shared?.currentPatch ?? null;
   const baseChanged =
     connected && livePatch !== null && bank !== null && isBaseChanged(livePatch, bank, bankBase);
@@ -238,7 +436,8 @@ export function DeckApp(): React.ReactElement {
         <div>
           <div className="deck-title">Scene Deck</div>
           <div className="deck-sub">
-            1–8 ポン出し · Shift+数字 cut · T 遷移 · R 再生成 · G ガチャ
+            1–8 ポン出し · Shift+数字 cut · ←↑↓→ カーソル · A auto · M 秒/小節 · −/= 間隔 · R 再生成
+            · G ガチャ
           </div>
         </div>
         <div className="deck-toolbar">
@@ -252,6 +451,27 @@ export function DeckApp(): React.ReactElement {
               {id}
             </button>
           ))}
+          <button
+            type="button"
+            className={`btn toggle${autoOn ? ' on' : ''}`}
+            onClick={() => setAutoOn((on) => !on)}
+          >
+            auto
+          </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setAutoKind((kind) => (kind === 'seconds' ? 'bars' : 'seconds'))}
+          >
+            {autoKind === 'seconds' ? `${autoSeconds}s` : `${autoBars} bars`}
+          </button>
+          <button
+            type="button"
+            className="btn"
+            onClick={() => setAutoOrder((o) => (o === 'sequential' ? 'random' : 'sequential'))}
+          >
+            {autoOrder === 'sequential' ? 'seq' : 'rnd'}
+          </button>
           <button type="button" className="btn" onClick={rebuildFromLive} disabled={!livePatch}>
             R rebuild
           </button>
@@ -283,10 +503,17 @@ export function DeckApp(): React.ReactElement {
         <span>
           fx <strong>{preset}</strong>
         </span>
+        <span>
+          auto{' '}
+          <strong>{formatAutoStatus(autoOn, autoKind, autoOrder, autoSeconds, autoBars)}</strong>
+        </span>
       </div>
 
       {banner ? <div className="deck-banner warn">{banner}</div> : null}
       {baseChanged ? <div className="deck-banner warn">BASE CHANGED — R で再生成</div> : null}
+      {waitingForTempo ? (
+        <div className="deck-banner warn">bars オートは tempo LOCK が必要です — 待機中</div>
+      ) : null}
       {lastError ? <div className="deck-banner warn">{lastError}</div> : null}
 
       {bank ? (
@@ -294,23 +521,29 @@ export function DeckApp(): React.ReactElement {
           {bank.map((scene) => {
             const active = shared?.lastTriggerLabel === scene.label;
             const hue = chipHue(scene.patch);
+            const thumb = thumbUrls[scene.slot];
+            const isCursor = cursor === scene.slot;
             return (
               <button
                 key={scene.slot}
                 type="button"
-                className={`deck-slot${active ? ' active' : ''}`}
-                onClick={() => triggerSlot(scene, preset)}
+                className={`deck-slot${active ? ' active' : ''}${isCursor ? ' cursor' : ''}`}
+                onClick={() => fireManual(scene, preset)}
               >
                 <div className="deck-slot-top">
                   <span className="deck-slot-key">{scene.slot + 1}</span>
                   <span className="deck-slot-label">{scene.label}</span>
                 </div>
+                {thumb ? (
+                  <img className="deck-thumb" src={thumb} alt="" draggable={false} />
+                ) : (
+                  <div
+                    className="deck-chip"
+                    style={{ background: `hsl(${hue} 70% 52%)` }}
+                    aria-hidden
+                  />
+                )}
                 <div className="deck-slot-detail">{scene.detail}</div>
-                <div
-                  className="deck-chip"
-                  style={{ background: `hsl(${hue} 70% 52%)` }}
-                  aria-hidden
-                />
               </button>
             );
           })}

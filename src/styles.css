@@ -884,7 +884,7 @@ html.deck-mode #root {
 .deck-grid {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
-  grid-template-rows: repeat(2, minmax(132px, auto));
+  grid-template-rows: repeat(2, minmax(180px, auto));
   gap: 10px;
 }
 
@@ -914,6 +914,25 @@ html.deck-mode #root {
 .deck-slot.active {
   border-color: var(--accent);
   box-shadow: 0 0 0 1px var(--accent);
+}
+
+.deck-slot.cursor {
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.45);
+}
+
+.deck-slot.active.cursor {
+  box-shadow:
+    0 0 0 1px var(--accent),
+    0 0 0 3px rgba(255, 255, 255, 0.28);
+}
+
+.deck-thumb {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  object-fit: cover;
+  border-radius: 8px;
+  background: #05070c;
+  display: block;
 }
 
 .deck-slot-top {
