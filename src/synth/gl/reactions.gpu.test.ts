@@ -38,7 +38,7 @@ import type { VisualPatch } from '../types';
 const SIZE = 256;
 const SEED = 'gpu-reaction-seed';
 
-/** 無音。ノイズゲート後の値なので帯域まで含めて 0。 */
+/** 無音。ノイズゲート後の値なので帯域まで含めて 0。海も凪。 */
 const SILENT: Record<string, number> = {
   uBass: 0,
   uMid: 0,
@@ -47,9 +47,13 @@ const SILENT: Record<string, number> = {
   uBeat: 0,
   uEnergy: 0,
   uPunch: 0,
+  uSwellWave: 0,
+  uSwellGroup: 0,
+  uSwellSet: 0,
+  uSwellSurge: 0,
 };
 
-/** 強い拍。リアクションが最大まで振れる側。 */
+/** 強い拍 + 育った海。リアクションが最大まで振れる側。 */
 const BEAT: Record<string, number> = {
   uBass: 0.7,
   uMid: 0.6,
@@ -58,7 +62,49 @@ const BEAT: Record<string, number> = {
   uBeat: 1,
   uEnergy: 0.9,
   uPunch: 0.9,
+  uSwellWave: 0.8,
+  uSwellGroup: 0.8,
+  uSwellSet: 0.7,
+  uSwellSurge: 0.8,
 };
+
+/**
+ * 音は大音量なのに海だけが凪いでいるフレーム。
+ *
+ * 実際には Hs の時定数（GROWTH_TAU = 18 秒）のせいで音が鳴り始めた直後がこれに
+ * なる。うねり駆動のリアクションが拍から漏れて動いていないかを見るのに使う。
+ */
+const LOUD_BUT_CALM_SEA: Record<string, number> = {
+  ...BEAT,
+  uSwellWave: 0,
+  uSwellGroup: 0,
+  uSwellSet: 0,
+  uSwellSurge: 0,
+};
+
+/**
+ * 海だけが走っていて、拍も音量も 0 のフレーム。
+ *
+ * ブレイクに入ってうねりだけが残っている状態。実運用では `uEnergy` が 0 に
+ * 落ちきる前に Hs も落ち始めるので厳密にはこの通りにはならないが、
+ * 「うねりが単独で絵を動かせる」ことを分離して確かめるための人工的な断面。
+ */
+const CALM_BUT_SWELL: Record<string, number> = {
+  uBass: 0,
+  uMid: 0,
+  uTreble: 0,
+  uLevel: 0,
+  uBeat: 0,
+  uEnergy: 0,
+  uPunch: 0,
+  uSwellWave: 0.8,
+  uSwellGroup: 0.8,
+  uSwellSet: 0.7,
+  uSwellSurge: 0.8,
+};
+
+/** うねりを駆動値に持つリアクション。 */
+const SWELL_DRIVEN = ALL_REACTIONS.filter((r) => /\brSwell\b|\brSet\b/.test(r.glsl));
 
 function withAudio(specs: UniformSpec[], audio: Record<string, number>): UniformSpec[] {
   return specs.map((s) =>
@@ -182,6 +228,73 @@ describe('synth/gl audio reactions on GPU', () => {
       if (failures.length > 0) {
         throw new Error(
           `${failures.length} reaction(s) do nothing on a beat:\n\n${failures.join('\n')}`,
+        );
+      }
+      expect(failures.length).toBe(0);
+    },
+    timeoutMs,
+  );
+
+  /**
+   * うねり駆動のリアクションについて、「駆動値が 0 なら完全な恒等変換」を
+   * 音とは独立に確かめる。
+   *
+   * 上の無音テストは全 uniform が 0 なので、拍から漏れて動いているリアクションも
+   * 一緒に静かになってしまい区別が付かない。ここは**音を最大にしたまま海だけを
+   * 凪がせる**ので、うねり項が本当にうねりだけで駆動されているかが分離できる。
+   */
+  it(
+    'swell reactions are pixel-identical to no reaction when the sea is calm, however loud the room',
+    async () => {
+      expect(SWELL_DRIVEN.length).toBeGreaterThan(0);
+      const failures: string[] = [];
+      for (const { label, patch } of PATCHES) {
+        const off = await frameOf(pg, patch, 'off', LOUD_BUT_CALM_SEA);
+        for (const r of SWELL_DRIVEN) {
+          const on = await frameOf(pg, patch, [r.id], LOUD_BUT_CALM_SEA);
+          if (!sameFrame(off, on)) {
+            failures.push(
+              `${label}/${r.id}: a calm sea still changed the frame — the snippet is picking up ` +
+                `something other than rSwell/rSet\n  off=${JSON.stringify(off)}\n  on =${JSON.stringify(
+                  on,
+                )}`,
+            );
+          }
+        }
+      }
+      if (failures.length > 0) {
+        throw new Error(`${failures.length} swell reaction(s) leak:\n\n${failures.join('\n\n')}`);
+      }
+      expect(failures.length).toBe(0);
+    },
+    timeoutMs,
+  );
+
+  /**
+   * 逆向きの確認。うねりだけで絵が動くこと = 配線が本当に届いていること。
+   * これが無いと「駆動値 0 で恒等」は「常に恒等」でも通ってしまう。
+   */
+  it(
+    'swell reactions move the frame on the swell alone, with no beat and no level',
+    async () => {
+      const failures: string[] = [];
+      for (const r of SWELL_DRIVEN) {
+        let movedSomewhere = false;
+        for (const { patch } of PATCHES) {
+          const off = await frameOf(pg, patch, 'off', CALM_BUT_SWELL);
+          const on = await frameOf(pg, patch, [r.id], CALM_BUT_SWELL);
+          if (!sameFrame(off, on)) {
+            movedSomewhere = true;
+            break;
+          }
+        }
+        if (!movedSomewhere) {
+          failures.push(`${r.id}: the swell alone does not move the frame`);
+        }
+      }
+      if (failures.length > 0) {
+        throw new Error(
+          `${failures.length} swell reaction(s) are inert:\n\n${failures.join('\n')}`,
         );
       }
       expect(failures.length).toBe(0);

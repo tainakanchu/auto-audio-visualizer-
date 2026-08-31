@@ -61,6 +61,21 @@ describe('synth/gl/assemblePatch', () => {
     expect(a.nsUniforms).toEqual(b.nsUniforms);
   });
 
+  /**
+   * 同じ topology なら seed が違っても fragSrc は 1 バイトも変わらないこと。
+   *
+   * `semanticSynth` の `sameTopology` はこれを前提に、同じデッキ上でシェーダを
+   * 差し替えずにパラメータだけモーフする。リアクション層の選択が seed を混ぜて
+   * しまうと（カタログを増やしたときに壊しやすい）、「モーフ中なのにシェーダが
+   * 別物」という状態が作れてしまう。seed の違いは実行時の `uSeed` にだけ出る。
+   */
+  it('same topology, different seed → identical fragSrc', () => {
+    const a = assemblePatch(defaultPatch('seed-alpha'), inlineCatalog);
+    const b = assemblePatch(defaultPatch('seed-bravo'), inlineCatalog);
+    expect(a.fragSrc).toBe(b.fragSrc);
+    expect(a.reactions).toEqual(b.reactions);
+  });
+
   it('uniform names follow u_<opId>_<paramId>', () => {
     const patch = defaultPatch();
     const { uniforms, nsUniforms, fragSrc } = assemblePatch(patch, inlineCatalog);

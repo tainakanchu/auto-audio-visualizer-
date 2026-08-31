@@ -176,6 +176,10 @@ let parallelCompile: { COMPLETION_STATUS_KHR: number } | null | undefined;
  * シェーダの `uTime` を進める時計。実時間ではなく音のエネルギーで進むので、
  * 無音では画がほぼ止まる。トランジション / Timeline は実時間 (`t`) のままで、
  * ここは見た目の動きだけを担当する。
+ *
+ * うねり（SwellClock）もこの時計が抱えている。シーンに海はひとつだけで、
+ * 変調エンジンは `motion.swell` を読むだけ。ここでは Patch の seed がまだ
+ * 決まっていないので既定 seed で作り、{@link gotoPatch} で差し替える。
  */
 const motion = createMotionClock();
 
@@ -598,6 +602,13 @@ function gotoPatch(
   // here rather than passed down.
   activeSpec = spec;
 
+  // Patch が変われば海の性格も変わる。reseed は成分の配置だけを差し替えて、
+  // 波高・溜まった水・IG 振動子・位相はそのまま持ち越す — 曲の途中で Patch を
+  // 切り替えるたびに海が凪へ戻り、うねり由来の変調が全部 0 から立ち上がり直す
+  // （＝音は鳴っているのに画が数十秒おとなしくなる）のを避けるため。
+  // 遷移の開始時点で差し替えるので、クロスフェード中の 2 デッキは同じ海を見る。
+  motion.reseed(patch.seed);
+
   if (front && sameTopology(front.live, patch)) {
     // Same operator graph → same shader. Morph in place on the single deck; the
     // warmup (if any) targeted a topology nobody wants any more.
@@ -698,7 +709,9 @@ function drawDeck(
   const { assembled, prog, uni, modEngine } = deck;
   const patch = deck.live;
 
-  const resolved = modEngine.update(audio, t, dt);
+  // 海は motion が唯一の持ち主。engine には読み取り専用で渡すだけなので、
+  // クロスフェード中の 2 デッキも同じうねりの上で動く。
+  const resolved = modEngine.update(audio, t, dt, motion.swell);
   const values = applyModulation(patch, inlineCatalog, resolved);
 
   // ビートは音量で殺す。テンポグリッドはブレイク中もフリーホイールするので、
@@ -718,6 +731,11 @@ function drawDeck(
   uni.f1('uBeat', pulse);
   uni.f1('uPunch', pulse * motion.energy);
   uni.f1('uEnergy', motion.energy);
+  // うねり。音から生やした時間軸で、無音では 4 本とも 0 に落ちる。
+  uni.f1('uSwellWave', motion.swell.wave);
+  uni.f1('uSwellGroup', motion.swell.group);
+  uni.f1('uSwellSet', motion.swell.set);
+  uni.f1('uSwellSurge', motion.swell.surge);
   uni.f1('uFade', fade);
 
   const seedLoc = gl.getUniformLocation(prog, SEED_UNIFORM);

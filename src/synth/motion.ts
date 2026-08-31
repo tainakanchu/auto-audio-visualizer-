@@ -16,6 +16,7 @@
  */
 import type { AudioFrame } from '../audio/types';
 import { smoothK } from './modulation';
+import { createSwellClock, type SwellState, ZERO_SWELL_STATE } from './swell';
 
 /** 無音時に残す時間の進み（1 = 通常速度）。0 にしないのは完全静止が死んで見えるから。 */
 export const IDLE_MOTION_RATE = 0.05;
@@ -34,6 +35,20 @@ export const MOTION_CURVE = 1.5;
 
 /** ビートパルスが速さを押し上げる最大割合（0.3 = 拍の頭で +30%）。 */
 export const BEAT_PUSH = 0.3;
+
+/**
+ * うねりの山が速さを押し上げる最大割合（0.25 = うねりの頂点で +25%）。
+ *
+ * `BEAT_PUSH` と全く同じ構造で、**押す方向にしか振らない**。下げる方向に振ると
+ * {@link IDLE_MOTION_RATE} の下限を割り、「音が鳴っているのに画が止まる」という
+ * このリポジトリが構造的に禁止している事故が起きる。
+ *
+ * 実際に見て詰める前提の初期値。
+ */
+export const SWELL_PUSH = 0.25;
+
+/** {@link createMotionClock} に seed を渡さなかったときの海の seed。 */
+export const DEFAULT_SWELL_SEED = 'motion:swell';
 
 /** テンポスケールの基準 BPM。この BPM のとき等倍。 */
 export const REFERENCE_BPM = 120;
@@ -78,13 +93,33 @@ export function tempoScale(audio: AudioFrame): number {
  * `patchSpeed` は Patch の `composition.speed`（Patch ごとの動きの速さ）。
  * ビート押し上げは `shaped` を掛けてあるので、無音のときはビートグリッドが
  * フリーホイールしていても速さは動かない。
+ *
+ * `swell` を渡すと、うねりの山でもう一段だけ前に押される。押し上げの駆動値には
+ * `max(group, set)` を使う:
+ *
+ * - 加重和にすると、各層のピークが重み分（0.6 倍・0.4 倍）に薄まり、せっかく
+ *   作った 2 段の階層が平均されて潰れてしまう。max なら両層が**交代で**押す。
+ * - max は入力が 0..1 なら出力も 0..1 なので、正規化し直さずに済む。
+ * - `wave`（1 秒周期）を混ぜないのは、時間の進みが波ごとに揺れると
+ *   `uTime` を読む Generator がジッタとして見えてしまうため。押し上げは
+ *   秒〜十秒スケールの層だけに任せる。
+ *
+ * `shaped` で門を掛けていないのは、`swell` が**無音で構造的に 0 になる**から。
+ * `gridPulse` と違ってブレイク中もフリーホイールすることはないので、
+ * {@link IDLE_MOTION_RATE} の思想（無音ではほぼ止まる）は自動的に保たれる。
  */
-export function motionRate(energy: number, audio: AudioFrame, patchSpeed = 1): number {
+export function motionRate(
+  energy: number,
+  audio: AudioFrame,
+  patchSpeed = 1,
+  swell: SwellState = ZERO_SWELL_STATE,
+): number {
   const shaped = Math.pow(clamp01(energy), MOTION_CURVE);
   const gate = IDLE_MOTION_RATE + (1 - IDLE_MOTION_RATE) * shaped;
   const pulse = audio.tempoLocked ? audio.gridPulse : audio.beatIntensity;
   const push = 1 + BEAT_PUSH * clamp01(pulse) * shaped;
-  return gate * push * tempoScale(audio) * Math.max(0, patchSpeed);
+  const swellPush = 1 + SWELL_PUSH * clamp01(Math.max(swell.group, swell.set));
+  return gate * push * swellPush * tempoScale(audio) * Math.max(0, patchSpeed);
 }
 
 export interface MotionClock {
@@ -96,15 +131,33 @@ export interface MotionClock {
   readonly rate: number;
   /** 直近フレームの平滑済みエネルギー 0..1。ビート表現のゲートにも使う。 */
   readonly energy: number;
-  /** 時刻とエネルギーを初期状態に戻す。 */
+  /**
+   * 直近フレームのうねり。
+   *
+   * **シーンに 1 つしか無い海**をここから読む。変調エンジンが自前の
+   * {@link createSwellClock} を持つと「2 つの海」ができ、同じ音を聞いている
+   * はずの `uTime` と変調がまるで別の波で動いてしまう。持ち主はこの時計だけ。
+   */
+  readonly swell: SwellState;
+  /** うねりの性格だけを新しい seed に差し替える（海の状態は保つ）。 */
+  reseed(seed: string): void;
+  /** 時刻・エネルギー・海を初期状態に戻す。 */
   reset(): void;
 }
 
-/** {@link MotionClock} を作る。状態は呼び出し側が持つ（シーンごとに 1 本）。 */
-export function createMotionClock(): MotionClock {
+/**
+ * {@link MotionClock} を作る。状態は呼び出し側が持つ（シーンごとに 1 本）。
+ *
+ * `seed` はうねりの成分配置にだけ効く。Patch の seed が確定していない時点でも
+ * 作れるよう既定値を持たせてあり、確定したら {@link MotionClock.reseed} で
+ * 海を凪に戻さずに差し替える。
+ */
+export function createMotionClock(seed: string = DEFAULT_SWELL_SEED): MotionClock {
   let time = 0;
   let energy = 0;
   let rate = IDLE_MOTION_RATE;
+  const swell = createSwellClock(seed);
+  let swellState: SwellState = ZERO_SWELL_STATE;
 
   return {
     advance(audio: AudioFrame, dt: number, patchSpeed = 1): number {
@@ -112,7 +165,11 @@ export function createMotionClock(): MotionClock {
       // 非対称平滑: 音が入った瞬間は素早く動き出し、止んだあとはゆっくり止まる。
       const tau = target > energy ? ATTACK_TAU : RELEASE_TAU;
       energy += smoothK(dt, tau) * (target - energy);
-      rate = motionRate(energy, audio, patchSpeed);
+      // 平滑済みエネルギーが確定した直後に海を進める。海はこの値だけを風速として見る。
+      // 生の audioEnergy ではなく平滑後を渡すのは、海側の時定数（18/40 秒）が
+      // フレーム単位のギザギザを前提にしていないため。
+      swellState = swell.advance(energy, dt);
+      rate = motionRate(energy, audio, patchSpeed, swellState);
       time += dt * rate;
       return time;
     },
@@ -125,10 +182,18 @@ export function createMotionClock(): MotionClock {
     get energy() {
       return energy;
     },
+    get swell() {
+      return swellState;
+    },
+    reseed(next: string): void {
+      swell.reseed(next);
+    },
     reset(): void {
       time = 0;
       energy = 0;
       rate = IDLE_MOTION_RATE;
+      swell.reset();
+      swellState = swell.state;
     },
   };
 }

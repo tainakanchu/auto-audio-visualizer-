@@ -148,6 +148,8 @@ export const ROUTE_SOURCES = [
   'audio:treble',
   'audio:level',
   'audio:beatIntensity',
+  'swell:group',
+  'swell:set',
 ];
 
 /** 由来: src/synth/validate.ts の AUDIO_SOURCES。検証だけはこちらの広い集合を使う。 */
@@ -163,6 +165,13 @@ export const AUDIO_SOURCES = new Set([
   'audio:barPhase',
   'audio:beatPhase',
 ]);
+
+/**
+ * 由来: src/synth/validate.ts の SWELL_SOURCES。
+ * 音から生やしたうねり（秒〜分スケールの時間軸）。生成時の候補は
+ * ROUTE_SOURCES の 2 つだけだが、検証は手書き Patch も通るので 4 つ全部を許す。
+ */
+export const SWELL_SOURCES = new Set(['swell:wave', 'swell:group', 'swell:set', 'swell:surge']);
 
 /**
  * 由来: src/synth/derive.ts の TARGET_KINDS / SAFE_TARGET_PARAMS / TARGET_WEIGHT_BY_PARAM。
@@ -1074,7 +1083,7 @@ export function validatePatchLocal(patch, catalogArray) {
     }
 
     const source = route.source;
-    if (source === 'time' || AUDIO_SOURCES.has(source)) {
+    if (source === 'time' || AUDIO_SOURCES.has(source) || SWELL_SOURCES.has(source)) {
       // ok
     } else if (source.startsWith('operator:')) {
       const sourceOpId = source.slice('operator:'.length);
@@ -1083,7 +1092,7 @@ export function validatePatchLocal(patch, catalogArray) {
       }
     } else {
       issues.push(
-        `route source "${source}" is not a known form (audio:*, time, operator:<opId>) (${basePath}.source)`,
+        `route source "${source}" is not a known form (audio:*, swell:*, time, operator:<opId>) (${basePath}.source)`,
       );
     }
   }

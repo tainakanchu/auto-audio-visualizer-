@@ -601,6 +601,38 @@ describe('synth/validate', () => {
       expect(codes(patch)).not.toContain('invalid_source');
     });
 
+    it('pass: every swell layer', () => {
+      const patch = validPatch({
+        routes: (['swell:wave', 'swell:group', 'swell:set', 'swell:surge'] as const).map(
+          (source, i) => ({
+            source,
+            target: ['mod.amount', 'mod.count', 'src.amount', 'src.count'][i]!,
+            amount: 0.2,
+            polarity: 'unipolar' as const,
+            smoothing: 0.8,
+          }),
+        ),
+      });
+      expect(codes(patch)).not.toContain('invalid_source');
+    });
+
+    it('fail: a swell layer that modulation.ts cannot resolve', () => {
+      // 網が prefix 一致になっていないことの確認。ここが緩いと「検証は通るのに
+      // デッキ生成で UnknownModulationSourceError」が作れてしまう。
+      const patch = validPatch({
+        routes: [
+          {
+            source: 'swell:tide',
+            target: 'mod.amount',
+            amount: 1,
+            polarity: 'unipolar',
+            smoothing: 0,
+          },
+        ],
+      });
+      expect(codes(patch)).toContain('invalid_source');
+    });
+
     it('fail: unknown source string', () => {
       const patch = validPatch({
         routes: [

@@ -73,7 +73,7 @@ CLI (`scripts/vj-ctl.mjs`) から操縦する。叩いているのは `src/synth
 
    ```bash
    node scripts/vj-ctl.mjs --url wss://<host>/room/<id> state
-   node scripts/vj-ctl.mjs --url wss://<host>/room/<id> seed "humid-night-market"
+   node scripts/vj-ctl.mjs --url wss://<host>/room/<id> seed "take-1"
    ```
 
 注意点:
@@ -95,7 +95,7 @@ CLI (`scripts/vj-ctl.mjs`) から操縦する。叩いているのは `src/synth
 |---|---|
 | `state` | 現在の Patch / Timeline / nowSec / barCount などを表示 |
 | `catalog` | Generator の一覧（id・category・tags・parameters・cost）を表示 |
-| `seed <seed>` | seed から派生した Patch へ**いま**遷移（ガチャ） |
+| `seed <seed>` | seed から派生した Patch へ**いま**遷移（ガチャ・seed の語に意味は無い） |
 | `patch <file.json>` | VisualPatch を**いま**適用 |
 | `event add ...` | 「N 秒後 / N 小節後に切り替える」を Timeline に予約 |
 | `event remove <id>` | 予約を取り消す |
@@ -116,14 +116,14 @@ node scripts/vj-ctl.mjs state
 # カタログから Generator と tags を眺める
 node scripts/vj-ctl.mjs catalog
 
-# いますぐ雰囲気を変える（seed ガチャ）
-node scripts/vj-ctl.mjs seed "humid-night-market"
+# いますぐ雰囲気を変える（seed ガチャ、語に意味は無い・完全ランダム）
+node scripts/vj-ctl.mjs seed "take-1"
 
 # いますぐ狙った Patch を当てる
 node scripts/vj-ctl.mjs patch /tmp/patch.json
 
 # 30 秒後に seed を切り替える（ゆっくり遷移）
-node scripts/vj-ctl.mjs event add --in 30 --seed rainy-qilou --transition slow
+node scripts/vj-ctl.mjs event add --in 30 --seed take-2 --transition slow
 
 # 8 小節後に Patch を差し替える（テンポがロックされているときだけ発火する）
 node scripts/vj-ctl.mjs event add --bar 8 --patch /tmp/next.json --label "chorus"
@@ -156,6 +156,16 @@ node scripts/vj-ctl.mjs load recording.json
 `--in` / `--bar` / `lock <sec>` はすべて**相対指定**。CLI が `state` を引いて絶対値に直してから送るので、
 「今から 30 秒後」「今から 60 秒ロック」とそのまま書けばよい。
 
+## seed の語に意味は無い
+
+`seed` はただの文字列で、ハッシュして決定的乱数の種にするだけ（`src/synth/rng.ts` / `src/synth/derive.ts`）。`"humid-night-market"` と `"take-3"` は等価 — 語の意味は一切見ない。
+
+- **`seed <s>` / `event add --seed <s>`**: 雰囲気を決めるのはこの seed だけだが、**語の意味とは無関係に完全ランダム**。狙った雰囲気を出したいなら `vj-gen "<mood語>"`、細部を詰めたいなら `vj-tweak` の tweaks、完全に狙い通りにしたいなら手書き Patch を使うこと。
+- **`vj-gen "<mood語>"`**: 雰囲気を決めるのは mood 語（vocab のタグが Generator の選ばれやすさに重みを付ける）。seed は重み付けされた候補群の**どれが当たるか**だけを決める。`--seed` で固定・再現できる（省略時は語から自動導出）。
+- 手書き Patch の `seed` フィールド（後述）: operators がすべてを決めるので、seed は完全にラベル。実行結果には一切影響しない。
+
+意味のある名前を付けてよい理由は**索引だけ**: 決定的なので同じ seed は同じ結果を再現でき、あとで見返すときに `take-3` より `humid-night-market` の方が思い出しやすい、というだけで、「湿った感じを狙って `humid` と付ける」という効果は無い。
+
 ## 出力の読み方
 
 - **exit 0** … 成功。stdout に結果 JSON（整形済み）。
@@ -185,7 +195,7 @@ node scripts/vj-preview.mjs --contact-sheet /tmp/contact-sheet.png
 seed や手書き Patch も、送る前に同じ CLI でドライランできる:
 
 ```bash
-pnpm vj:preview --seed humid-night-market /tmp/seed.png
+pnpm vj:preview --seed take-3 /tmp/seed.png
 pnpm vj:preview /tmp/patch.json /tmp/patch.png
 ```
 
@@ -234,7 +244,7 @@ pnpm vj:preview /tmp/patch.json /tmp/patch.png
 ```json
 {
   "schemaVersion": 1,
-  "seed": "wet-qilou-night",
+  "seed": "take-1",
   "operators": [
     { "id": "src", "generatorId": "qilouShutter", "generatorVersion": 1,
       "parameters": { "density": 28, "openness": 0.3, "wear": 0.6 } },
@@ -255,7 +265,8 @@ pnpm vj:preview /tmp/patch.json /tmp/patch.png
 }
 ```
 
-（パラメータ名・範囲は `catalog` の出力が正。上の値は形の例。）
+（パラメータ名・範囲は `catalog` の出力が正。上の値は形の例。`seed` フィールドはこの Patch では
+operators が全てを決めるので**ただのラベル**で、実行結果には影響しない。）
 
 ## vj-gen.mjs / vj-tweak.mjs — 手で Patch を組む前に
 
@@ -537,7 +548,8 @@ external anchor は `fire <id>` を叩くまで絶対に自動発火しない（
   `vj-tweak.mjs` で寄せる。手で Patch JSON を組むのは最後の手段。
 - **手で組んだ Patch JSON、または vj-gen/vj-tweak の `--dry-run` 結果を送る前** →
   `vj-validate.mjs <file>` を通す。budget 超過はここでしか検出できない。
-- **「すぐ変えて」** → `seed <s>`（狙いが緩いとき・ガチャでよいとき）か `patch <file>`（狙いが明確なとき）。
+- **「すぐ変えて」** → `seed <s>`（雰囲気を狙えない・完全ランダムでよいとき）か `patch <file>`（狙いが明確なとき）。
+  緩く狙いたいだけなら先に `vj-gen "<mood語>"` を試す。
   「同じ構成のまま雰囲気だけ変えて」なら `vj-tweak.mjs --reroll`（トポロジ固定・拍リアクションも維持）。
 - **「後で変えて」「サビで」「あと 1 分くらいしたら」** → `event add`。
   秒で言われたら `--in`、小節で言われたら `--bar`。予約した id は出力に入っているので控えておく。
