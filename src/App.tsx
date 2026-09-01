@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AudioEngine } from './audio/AudioEngine';
 import { initDeckHost } from './deck/host';
+import { openSceneDeck } from './deck/openDeck';
 import { Renderer } from './render/Renderer';
 import { scenes, sceneByIndex, sceneIndexById } from './scenes';
 import { initBridgeClient } from './synth/bridgeClient';
@@ -417,7 +418,7 @@ export function App(): React.ReactElement {
         case 's':
         case 'S':
           // D は rerollDetails（PR #49）が使っている。デッキ窓は S。
-          window.open(location.pathname + '?deck=1', 'vj-scene-deck', 'width=1000,height=640');
+          if (!e.repeat) openSceneDeck();
           break;
         case 't':
         case 'T':

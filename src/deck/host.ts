@@ -128,6 +128,16 @@ export function handleDeckRequest(
   post({ kind: 'deck:state', state: snapshot(control) });
 }
 
+function labelOf(msg: unknown): string {
+  if (typeof msg !== 'object' || msg === null) return '';
+  const label = (msg as { label?: unknown }).label;
+  return typeof label === 'string' ? label : '';
+}
+
+function errorMessage(err: unknown): string {
+  return err instanceof Error ? err.message : String(err);
+}
+
 export function initDeckHost(): { close(): void } | null {
   if (typeof BroadcastChannel !== 'function') return null;
 
@@ -153,7 +163,13 @@ export function initDeckHost(): { close(): void } | null {
 
   channel.onmessage = (ev: MessageEvent): void => {
     if (disposed) return;
-    handleDeckRequest(ev.data, control, post);
+    try {
+      handleDeckRequest(ev.data, control, post);
+    } catch (err) {
+      // 想定外の throw でもデッキ窓を「待ち」のまま放置しない。
+      const label = labelOf(ev.data);
+      post({ kind: 'deck:result', ok: false, label, issues: [errorMessage(err)] });
+    }
   };
 
   const unsub = control.subscribe(() => {
