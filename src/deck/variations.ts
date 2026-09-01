@@ -5,6 +5,7 @@
  * （シェーダ再コンパイル無し）で済むようにするため。
  */
 import { createCatalog } from '../synth/catalog';
+import { MOTION_RATIO_MAX, MOTION_TARGET_PARAMS } from '../synth/derive';
 import { allGeneratorDefinitions } from '../synth/generators';
 import type { InlineGeneratorCatalog } from '../synth/generators/types';
 import { rand } from '../synth/rng';
@@ -51,7 +52,7 @@ function buildScene(
   const patch = structuredClone(base);
   varyOperators(patch, bankSeed, catalog, slot, strength);
   varyComposition(patch, bankSeed, slot, strength);
-  varyRoutes(patch, bankSeed, slot, strength);
+  varyRoutes(patch, bankSeed, catalog, slot, strength);
   varyPalette(patch, bankSeed, slot, strength);
 
   const detail = summarizeDetail(base, patch, catalog);
@@ -131,15 +132,56 @@ function varyComposition(
   strength: number,
 ): void {
   const unit = rand(bankSeed, `deck:v${slot}:composition:speed`, 1) * 2 - 1;
-  patch.composition.speed = clamp(patch.composition.speed * (1 + unit * 0.5 * strength), 0.3, 1);
+  // clamp 範囲は base 基準で広げる。定数 0.3..1 のままだと base がその外
+  // （例: 2.5）のとき全バリエーションが端に潰れて BASE と別物になる。
+  const base = patch.composition.speed;
+  patch.composition.speed = clamp(
+    base * (1 + unit * 0.5 * strength),
+    Math.min(0.3, base),
+    Math.max(1, base),
+  );
 }
 
-function varyRoutes(patch: VisualPatch, bankSeed: string, slot: number, strength: number): void {
+function varyRoutes(
+  patch: VisualPatch,
+  bankSeed: string,
+  catalog: InlineGeneratorCatalog,
+  slot: number,
+  strength: number,
+): void {
   for (let i = 0; i < patch.routes.length; i++) {
     const route = patch.routes[i]!;
     const unit = rand(bankSeed, `deck:v${slot}:routes:${i}:amount`, 1) * 2 - 1;
-    route.amount = Math.max(0, route.amount * (1 + unit * 0.4 * strength));
+    const scaled = route.amount * (1 + unit * 0.4 * strength);
+    const cap = routeAmountCap(route.target, patch, catalog);
+    // 符号は base のまま（動かすのは振り幅だけ）。負の amount を 0 に潰さない。
+    const magnitude = Math.min(Math.abs(scaled), cap ?? Infinity);
+    route.amount = route.amount < 0 ? -magnitude : magnitude;
   }
+}
+
+/**
+ * derive.ts の `buildRoutes` が敷いている amount の上限を再現する。
+ * 動き系 target は span * {@link MOTION_RATIO_MAX}、それ以外は span まで。
+ * target のパラメータを解決できないときは undefined（上限なし）。
+ */
+function routeAmountCap(
+  target: string,
+  patch: VisualPatch,
+  catalog: InlineGeneratorCatalog,
+): number | undefined {
+  const dot = target.indexOf('.');
+  if (dot <= 0) return undefined;
+  const opId = target.slice(0, dot);
+  const paramId = target.slice(dot + 1);
+  const op = patch.operators.find((o) => o.id === opId);
+  if (!op) return undefined;
+  const gen = catalog.get(op.generatorId);
+  const def = gen?.def.parameters.find((p) => p.id === paramId);
+  if (!def || typeof def.min !== 'number' || typeof def.max !== 'number') return undefined;
+  const span = def.max - def.min;
+  if (!(span > 0)) return undefined;
+  return span * (MOTION_TARGET_PARAMS.has(paramId) ? MOTION_RATIO_MAX : 1);
 }
 
 function varyPalette(patch: VisualPatch, bankSeed: string, slot: number, strength: number): void {
@@ -241,7 +283,12 @@ function pushNumericDelta(
   style: 'add' | 'mul',
 ): void {
   if (from === to) return;
-  const text = style === 'mul' ? `${name}×${fmtNum(to, 2)}` : `${name}${fmtSigned(to - from, 2)}`;
+  // 'mul' は倍率表示。絶対値を出すと「speed×0.6」が新しい値なのか倍率なのか
+  // 読めなくなる（route の amount× と同じく to/from を出す）。
+  const text =
+    style === 'mul'
+      ? `${name}×${fmtNum(to / (from === 0 ? 1 : from), 2)}`
+      : `${name}${fmtSigned(to - from, 2)}`;
   deltas.push({ text, score: Math.abs(to - from) / span });
 }
 
