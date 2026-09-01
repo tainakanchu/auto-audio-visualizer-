@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AudioEngine } from '../audio/AudioEngine';
+import { openSceneDeck } from '../deck/openDeck';
 import { scenes } from '../scenes';
 import {
   dbToFraction,
@@ -609,6 +610,12 @@ export function ControlPanel(props: ControlPanelProps): React.ReactElement {
       </div>
 
       <div className="row">
+        <button type="button" className="btn" style={{ width: '100%' }} onClick={openSceneDeck}>
+          Scene Deck
+        </button>
+      </div>
+
+      <div className="row">
         <button
           type="button"
           className="btn"
@@ -623,7 +630,7 @@ export function ControlPanel(props: ControlPanelProps): React.ReactElement {
         <kbd>1</kbd>–<kbd>9</kbd>,<kbd>0</kbd> scene · <kbd>←</kbd>
         <kbd>→</kbd> prev/next · <kbd>H</kbd> panel · <kbd>F</kbd> fullscreen · <kbd>A</kbd>{' '}
         auto-cycle · <kbd>B</kbd> background · <kbd>R</kbd> reroll · <kbd>D</kbd> reroll details ·{' '}
-        <kbd>T</kbd> tap
+        <kbd>S</kbd> scene deck · <kbd>T</kbd> tap
       </div>
     </div>
   );

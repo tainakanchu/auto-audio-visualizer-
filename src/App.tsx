@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AudioEngine } from './audio/AudioEngine';
+import { initDeckHost } from './deck/host';
+import { openSceneDeck } from './deck/openDeck';
 import { Renderer } from './render/Renderer';
 import { scenes, sceneByIndex, sceneIndexById } from './scenes';
 import { initBridgeClient } from './synth/bridgeClient';
@@ -413,6 +415,11 @@ export function App(): React.ReactElement {
         case 'D':
           rerollDetails();
           break;
+        case 's':
+        case 'S':
+          // D は rerollDetails（PR #49）が使っている。デッキ窓は S。
+          if (!e.repeat) openSceneDeck();
+          break;
         case 't':
         case 'T':
           onTap();
@@ -426,11 +433,14 @@ export function App(): React.ReactElement {
   }, [setScene, shiftScene, update, reroll, rerollDetails, onTap]);
 
   // ---- 外部 CLI からの Bridge（?bridge=1 のときだけ有効） ----
+  // デッキ host は BroadcastChannel のみなので常時起動する（ネットワーク副作用なし）。
   useEffect(() => {
     const handle = initBridgeClient();
+    const deck = initDeckHost();
     // StrictMode では effect が2回走るので、必ず畳んで多重接続を防ぐ。
     return () => {
       handle?.close();
+      deck?.close();
     };
   }, []);
 
