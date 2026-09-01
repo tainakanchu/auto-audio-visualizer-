@@ -2,6 +2,26 @@
   "name": "vj-overlay-tool",
   "version": "1.0.0",
   "private": true,
+  "description": "ブラウザだけで動く音反応 VJ ビジュアルツール。seed から GLSL シェーダを合成する Semantic Synth、WebGL2 GPU シーン、OBS 向け透過オーバーレイ、別窓の Scene Deck。",
+  "keywords": [
+    "audio-visualizer",
+    "generative-art",
+    "glsl",
+    "obs-overlay",
+    "react",
+    "vite",
+    "vj",
+    "web-audio",
+    "webgl2"
+  ],
+  "homepage": "https://tainakanchu.github.io/auto-audio-visualizer-/",
+  "bugs": {
+    "url": "https://github.com/tainakanchu/auto-audio-visualizer-/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/tainakanchu/auto-audio-visualizer-.git"
+  },
   "type": "module",
   "scripts": {
     "dev": "vite",
