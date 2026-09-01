@@ -1,8 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { createCatalog } from '../synth/catalog';
 import { DEFAULT_BUDGETS, estimateCost, fitsBudget } from '../synth/cost';
-import { derivePatch } from '../synth/derive';
+import { derivePatch, MOTION_RATIO_MAX, MOTION_TARGET_PARAMS } from '../synth/derive';
 import { allGeneratorDefinitions, inlineCatalog } from '../synth/generators';
+import { serializePatch } from '../synth/schema';
 import type { ParameterDefinition, VisualPatch } from '../synth/types';
 import { validatePatch } from '../synth/validate';
 import { buildSceneBank, SCENE_BANK_SIZE } from './variations';
@@ -141,6 +142,19 @@ function assertInvariants(base: VisualPatch, scenePatch: VisualPatch): void {
   assertParamKinds(scenePatch);
 }
 
+/** route の amount 上限（derive.ts の buildRoutes と同じ規則）。 */
+function routeAmountCapOf(patch: VisualPatch, target: string): number | undefined {
+  const dot = target.indexOf('.');
+  if (dot <= 0) return undefined;
+  const op = patch.operators.find((o) => o.id === target.slice(0, dot));
+  if (!op) return undefined;
+  const paramId = target.slice(dot + 1);
+  const def = inlineCatalog.get(op.generatorId)?.def.parameters.find((prm) => prm.id === paramId);
+  if (!def || typeof def.min !== 'number' || typeof def.max !== 'number') return undefined;
+  const span = def.max - def.min;
+  return span * (MOTION_TARGET_PARAMS.has(paramId) ? MOTION_RATIO_MAX : 1);
+}
+
 describe('deck/variations', () => {
   it('same (base, bankSeed) → deep equal (determinism)', () => {
     const base = derivePatch('neon-tiger-042', { catalog: inlineCatalog });
@@ -195,6 +209,83 @@ describe('deck/variations', () => {
       }
       expect(bank[0]!.patch).toEqual(base);
       expect(bank[0]!.detail.length).toBeGreaterThan(0);
+    }
+  });
+
+  it('V1..V7 actually differ from BASE (vary が効いている)', () => {
+    for (const seed of ['deck-diff-a', 'deck-diff-b', 'deck-diff-c', 'deck-diff-d']) {
+      const base = derivePatch(seed, { catalog: inlineCatalog });
+      const bank = buildSceneBank(base, `bank-${seed}`, inlineCatalog);
+      const baseText = serializePatch(base);
+      expect(serializePatch(bank[0]!.patch)).toBe(baseText);
+      for (const scene of bank.slice(1)) {
+        expect(serializePatch(scene.patch)).not.toBe(baseText);
+        expect(scene.detail).not.toBe('base');
+      }
+    }
+  });
+
+  it('V1..V7 are pairwise distinct', () => {
+    for (const seed of ['deck-pair-a', 'deck-pair-b', 'deck-pair-c']) {
+      const base = derivePatch(seed, { catalog: inlineCatalog });
+      const bank = buildSceneBank(base, `bank-${seed}`, inlineCatalog);
+      const texts = bank.slice(1).map((s) => serializePatch(s.patch));
+      expect(new Set(texts).size).toBe(texts.length);
+    }
+  });
+
+  it('route amount stays under the derive.ts safety cap', () => {
+    const eps = 1e-9;
+    for (let i = 0; i < 60; i++) {
+      const base = derivePatch(`deck-cap-${i}`, { catalog: inlineCatalog });
+      const bank = buildSceneBank(base, `bank-cap-${i}`, inlineCatalog);
+      for (const scene of bank) {
+        for (const route of scene.patch.routes) {
+          const cap = routeAmountCapOf(scene.patch, route.target);
+          expect(cap).toBeDefined();
+          expect(Math.abs(route.amount)).toBeLessThanOrEqual(cap! + eps);
+        }
+      }
+    }
+  });
+
+  it('keeps a base speed outside 0.3..1 instead of collapsing it to 1', () => {
+    const base = kindsPatch();
+    base.composition.speed = 2.5;
+    const bank = buildSceneBank(base, 'bank-fast', inlineCatalog);
+    const speeds = bank.slice(1).map((s) => s.patch.composition.speed);
+    for (const speed of speeds) {
+      expect(speed).toBeGreaterThanOrEqual(0.3);
+      expect(speed).toBeLessThanOrEqual(2.5);
+    }
+    expect(speeds.every((v) => v === 1)).toBe(false);
+    expect(new Set(speeds).size).toBeGreaterThan(1);
+  });
+
+  it('renders the speed delta as a ratio, not the absolute value', () => {
+    const base = kindsPatch();
+    base.composition.speed = 2.5;
+    const bank = buildSceneBank(base, 'bank-fast', inlineCatalog);
+    const ratios = bank
+      .map((scene) => /speed×([\d.]+)/.exec(scene.detail)?.[1])
+      .filter((v): v is string => v !== undefined)
+      .map(Number);
+    expect(ratios.length).toBeGreaterThan(0);
+    // 倍率は 1 ± 0.5*strength(<=0.85) の範囲。絶対値（2.5 前後）が出たら壊れている。
+    for (const ratio of ratios) expect(ratio).toBeLessThanOrEqual(1.5);
+  });
+
+  it('falls back to a base clone when the base patch itself is invalid', () => {
+    const base = kindsPatch();
+    base.operators[0]!.generatorVersion = 999; // カタログと不一致 = validate 落ち
+    expect(validatePatch(base, metaCatalog).length).toBeGreaterThan(0);
+
+    const bank = buildSceneBank(base, 'bank-invalid', inlineCatalog);
+    expect(bank).toHaveLength(SCENE_BANK_SIZE);
+    for (const scene of bank) {
+      expect(scene.detail).toBe('base');
+      expect(scene.patch).toEqual(base);
+      expect(scene.patch).not.toBe(base);
     }
   });
 });
