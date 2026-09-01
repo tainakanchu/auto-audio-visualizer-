@@ -18,7 +18,7 @@ import { namespaceToU32, seedToU32 } from '../synth/rng';
 import type { VisualPatch } from '../synth/types';
 
 export interface ThumbRenderer {
-  render(patch: VisualPatch): string | null;
+  render(patch: VisualPatch, opts?: { hue?: number }): string | null;
   dispose(): void;
 }
 
@@ -93,7 +93,7 @@ export function createThumbRenderer(w = 192, h = 108): ThumbRenderer {
   canvas.addEventListener('webglcontextlost', onContextLost);
   canvas.addEventListener('webglcontextrestored', onContextRestored);
 
-  const render = (patch: VisualPatch): string | null => {
+  const render = (patch: VisualPatch, opts?: { hue?: number }): string | null => {
     if (disposed || !ready || gl.isContextLost()) return null;
     try {
       const assembled = assemblePatch(patch, inlineCatalog, { reactions: 'off' });
@@ -136,8 +136,10 @@ export function createThumbRenderer(w = 192, h = 108): ThumbRenderer {
         const paramDef = gen.def.parameters.find((p) => p.id === paramId);
         if (!paramDef) continue;
         const raw = op.parameters[paramId] ?? paramDef.default;
-        // サムネにレンダラ hue は無い。patch の値をそのまま使う。
-        setParamUniform(uni, paramDef.kind, name, raw, paramDef.options);
+        // drawDeck と同じ: Patch の hue はレンダラ hue からのオフセット。
+        const value =
+          paramId === 'hue' && typeof raw === 'number' ? (raw + (opts?.hue ?? 0)) % 360 : raw;
+        setParamUniform(uni, paramDef.kind, name, value, paramDef.options);
       }
 
       bindDummyTextures(gl, uni, assembled.textures, dummy);

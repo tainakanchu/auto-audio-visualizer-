@@ -54,6 +54,7 @@ function stubControl(
     currentPatch?: VisualPatch | null;
     firedIds?: string[];
     events?: VisualEvent[];
+    hue?: number;
   } = {},
 ): { control: SynthControl; applyTimelineOp: ReturnType<typeof vi.fn> } {
   const applyTimelineOp = vi.fn(() => ({ ok: true as const }));
@@ -72,6 +73,7 @@ function stubControl(
     firedIds: init.firedIds ?? [],
     reactions: [],
     blendMode: 'normal',
+    hue: init.hue ?? 0,
   };
   const control: SynthControl = {
     getState: () => state,
@@ -219,6 +221,7 @@ describe('handleDeckRequest', () => {
       transitionActive: true,
       lockedUntilSec: 20,
       recordingActive: true,
+      hue: 213.5,
     });
     const posted = collect(control, { kind: 'deck:requestState' });
     expect(posted).toHaveLength(1);
@@ -235,6 +238,7 @@ describe('handleDeckRequest', () => {
     expect(state.lastTriggerLabel === null || typeof state.lastTriggerLabel === 'string').toBe(
       true,
     );
+    expect(state.hue).toBe(213.5);
   });
 
   it('requestState reports a null currentPatch when the synth scene is inactive', () => {

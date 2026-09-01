@@ -53,6 +53,11 @@ export interface SynthControlState {
    * オーバーレイが無いときは描画側が無視する。
    */
   blendMode: BlendMode;
+  /**
+   * レンダラの現在 hue（0..360、variation.hueOffset 込み）。
+   * シーン非アクティブ時は 0。
+   */
+  hue: number;
 }
 
 /** setBlendMode の結果。不正値でも ok:true（normal へフォールバック + warning）。 */
@@ -132,6 +137,7 @@ function idleState(): Omit<SynthControlState, 'blendMode'> {
     tempoLocked: false,
     firedIds: [],
     reactions: [],
+    hue: 0,
   };
 }
 

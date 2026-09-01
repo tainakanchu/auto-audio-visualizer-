@@ -30,6 +30,8 @@ const POLL_MS = 500;
 const POLL_BARS_MS = 250;
 const GRID_COLS = 4;
 const GRID_ROWS = 2;
+/** hue サイクル中に全サムネを描き直す最短円環距離。小さすぎると毎秒 8 draw になる。 */
+const HUE_REDRAW_DEG = 12;
 
 function isEditableTarget(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
@@ -52,6 +54,12 @@ async function toggleFullscreen(): Promise<void> {
 function nextPreset(current: TransitionPresetId): TransitionPresetId {
   const idx = PRESET_CYCLE.indexOf(current);
   return PRESET_CYCLE[(idx + 1) % PRESET_CYCLE.length]!;
+}
+
+/** 円環上の最短距離（度）。359→1 は 2。 */
+function circularHueDelta(from: number, to: number): number {
+  const d = Math.abs(to - from) % 360;
+  return d > 180 ? 360 - d : d;
 }
 
 function chipHue(patch: VisualPatch): number {
@@ -127,6 +135,8 @@ export function DeckApp(): React.ReactElement {
   const sharedRef = useRef<DeckSharedState | null>(null);
   const presetRef = useRef<TransitionPresetId>('default');
   const thumbsRef = useRef<ThumbRenderer | null>(null);
+  const hueRef = useRef(0);
+  const lastThumbHueRef = useRef<number | null>(null);
   const cursorRef = useRef(0);
   const pollMsRef = useRef(POLL_MS);
   // host が最後に受理したスロット。楽観更新した playhead の巻き戻し先。
@@ -146,12 +156,14 @@ export function DeckApp(): React.ReactElement {
   const [autoSeconds, setAutoSeconds] = useState(AUTO_SECONDS_DEFAULT);
   const [autoBars, setAutoBars] = useState(AUTO_BARS_DEFAULT);
   const [thumbUrls, setThumbUrls] = useState<Array<string | null>>([]);
+  const [hueEpoch, setHueEpoch] = useState(0);
 
   bankRef.current = bank;
   sharedRef.current = shared;
   presetRef.current = preset;
   cursorRef.current = cursor;
   pollMsRef.current = autoOn && autoKind === 'bars' ? POLL_BARS_MS : POLL_MS;
+  hueRef.current = shared?.hue ?? 0;
 
   const postRequest = useCallback((req: DeckRequest): void => {
     channelRef.current?.postMessage(req);
@@ -353,6 +365,16 @@ export function DeckApp(): React.ReactElement {
     };
   }, []);
 
+  // |Δhue| が閾値を超えたときだけ epoch を進めてサムネを描き直す。
+  // 進行中ループのキャンセルは下の effect に任せる（ここが毎 poll で再実行されると途中の rAF が死ぬ）。
+  useEffect(() => {
+    const hue = shared?.hue ?? 0;
+    const last = lastThumbHueRef.current;
+    if (last === null || circularHueDelta(last, hue) < HUE_REDRAW_DEG) return;
+    lastThumbHueRef.current = hue;
+    setHueEpoch((n) => n + 1);
+  }, [shared?.hue]);
+
   // サムネは 1 枚/フレーム。コンパイルが UI を止めないようにする。
   useEffect(() => {
     if (!bank) {
@@ -363,13 +385,14 @@ export function DeckApp(): React.ReactElement {
     let i = 0;
     const urls: Array<string | null> = Array.from({ length: bank.length }, () => null);
     setThumbUrls(urls.slice());
+    lastThumbHueRef.current = hueRef.current;
 
     const tick = (): void => {
       if (cancelled) return;
       const renderer = thumbsRef.current;
       const scene = bank[i];
       if (!renderer || !scene) return;
-      urls[i] = renderer.render(scene.patch);
+      urls[i] = renderer.render(scene.patch, { hue: hueRef.current });
       setThumbUrls(urls.slice());
       i += 1;
       if (i < bank.length) window.requestAnimationFrame(tick);
@@ -379,7 +402,7 @@ export function DeckApp(): React.ReactElement {
       cancelled = true;
       window.cancelAnimationFrame(raf);
     };
-  }, [bank]);
+  }, [bank, hueEpoch]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -515,6 +538,9 @@ export function DeckApp(): React.ReactElement {
       <div className="deck-status">
         <span>
           conn <strong>{connected ? 'live' : missingHost ? 'missing' : 'waiting'}</strong>
+        </span>
+        <span>
+          hue <strong>{`${Math.round(shared?.hue ?? 0)}°`}</strong>
         </span>
         <span>
           t <strong>{shared ? `${shared.nowSec.toFixed(1)}s` : '—'}</strong>

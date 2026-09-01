@@ -36,6 +36,7 @@ function snapshot(control: SynthControl): DeckSharedState {
     lockedUntilSec: state.timeline.lockedUntilSec,
     recordingActive: state.recordingActive,
     lastTriggerLabel,
+    hue: state.hue,
   };
 }
 
