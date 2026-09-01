@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AudioEngine } from './audio/AudioEngine';
-import { initDeckHost } from './deck/host';
+import { initDeckHost, type DeckHostHandlers } from './deck/host';
 import { openSceneDeck } from './deck/openDeck';
+import type { DeckAppState, DeckCommand } from './deck/protocol';
 import { Renderer } from './render/Renderer';
 import { scenes, sceneByIndex, sceneIndexById } from './scenes';
 import { initBridgeClient } from './synth/bridgeClient';
@@ -287,6 +288,77 @@ export function App(): React.ReactElement {
     engineRef.current?.tempoAuto();
   }, []);
 
+  const getAppState = useCallback((): DeckAppState => {
+    const s = settingsRef.current;
+    const engine = engineRef.current;
+    const tempo = engine?.getTempoState();
+    return {
+      sceneId: s.sceneId,
+      hueMode: s.hueMode,
+      fixedHue: s.fixedHue,
+      background: s.background,
+      seed: s.seed,
+      autoCycle: s.autoCycle,
+      bpm: tempo?.bpm ?? 0,
+      tempoLocked: tempo?.tempoLocked ?? false,
+      audioRunning: engine?.running ?? false,
+    };
+  }, []);
+
+  const runCommand = useCallback(
+    (command: DeckCommand): { ok: boolean; issues: string[] } => {
+      switch (command.kind) {
+        case 'seed:gacha':
+          reroll();
+          return { ok: true, issues: [] };
+        case 'seed:set':
+          update({ seed: command.seed });
+          return { ok: true, issues: [] };
+        case 'patch:rerollDetails':
+          rerollDetails();
+          return { ok: true, issues: [] };
+        case 'scene:set':
+          if (!scenes.some((s) => s.id === command.sceneId)) {
+            return { ok: false, issues: [`unknown scene: ${command.sceneId}`] };
+          }
+          setScene(command.sceneId);
+          return { ok: true, issues: [] };
+        case 'scene:shift':
+          shiftScene(command.delta);
+          return { ok: true, issues: [] };
+        case 'hue:mode':
+          update({ hueMode: command.mode });
+          return { ok: true, issues: [] };
+        case 'hue:fixed':
+          update({ hueMode: 'fixed', fixedHue: command.hue });
+          return { ok: true, issues: [] };
+        case 'background:set':
+          update({ background: command.background });
+          return { ok: true, issues: [] };
+        case 'tempo:tap':
+          onTap();
+          return { ok: true, issues: [] };
+        case 'tempo:multiply':
+          onTempoMultiply(command.factor);
+          return { ok: true, issues: [] };
+        case 'tempo:auto':
+          onTempoAuto();
+          return { ok: true, issues: [] };
+        case 'timeline:lock':
+          return { ok: false, issues: ['timeline:lock is handled by host'] };
+        case 'autoCycle:set':
+          update({ autoCycle: command.on });
+          return { ok: true, issues: [] };
+      }
+    },
+    [reroll, update, rerollDetails, setScene, shiftScene, onTap, onTempoMultiply, onTempoAuto],
+  );
+
+  const getAppStateRef = useRef(getAppState);
+  getAppStateRef.current = getAppState;
+  const runCommandRef = useRef(runCommand);
+  runCommandRef.current = runCommand;
+
   // Push variation changes (seed reroll / edit) to the renderer, which re-inits
   // the active scene so element-count arrays re-allocate against the new look.
   useEffect(() => {
@@ -436,7 +508,11 @@ export function App(): React.ReactElement {
   // デッキ host は BroadcastChannel のみなので常時起動する（ネットワーク副作用なし）。
   useEffect(() => {
     const handle = initBridgeClient();
-    const deck = initDeckHost();
+    const handlers: DeckHostHandlers = {
+      getAppState: () => getAppStateRef.current(),
+      runCommand: (command) => runCommandRef.current(command),
+    };
+    const deck = initDeckHost(handlers);
     // StrictMode では effect が2回走るので、必ず畳んで多重接続を防ぐ。
     return () => {
       handle?.close();

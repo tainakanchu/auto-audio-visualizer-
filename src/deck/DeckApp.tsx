@@ -1,8 +1,15 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { scenes } from '../scenes';
 import { inlineCatalog } from '../synth/generators';
 import { serializePatch } from '../synth/schema';
 import type { TransitionPresetId, VisualPatch } from '../synth/types';
 import { randomSeed } from '../variation/generate';
+import {
+  dispatchDeckAction,
+  keyToAction,
+  type DeckActionContext,
+  type DeckKeyView,
+} from './actions';
 import {
   AUTO_BARS_DEFAULT,
   AUTO_SECONDS_DEFAULT,
@@ -18,6 +25,7 @@ import { circularHueDelta } from './hue';
 import {
   DECK_CHANNEL,
   parseDeckResponse,
+  type DeckCommand,
   type DeckRequest,
   type DeckSharedState,
 } from './protocol';
@@ -136,6 +144,9 @@ export function DeckApp(): React.ReactElement {
   const thumbBankRef = useRef<DeckScene[] | null>(null);
   const cursorRef = useRef(0);
   const pollMsRef = useRef(POLL_MS);
+  const commandIdRef = useRef(0);
+  const viewRef = useRef<DeckKeyView | null>(null);
+  const ctxRef = useRef<DeckActionContext | null>(null);
   // host が最後に受理したスロット。楽観更新した playhead の巻き戻し先。
   const acceptedSlotRef = useRef(0);
 
@@ -289,6 +300,11 @@ export function DeckApp(): React.ReactElement {
         setShared(parsed.state);
         return;
       }
+      if (parsed.kind === 'deck:commandResult') {
+        if (parsed.ok) setLastError(null);
+        else setLastError(parsed.issues.join(' · ') || 'rejected');
+        return;
+      }
       if (!parsed.ok) {
         setLastError(parsed.issues.join(' · ') || 'rejected');
         // 拒否時 host は deck:state を投げない。楽観更新した playhead を戻す。
@@ -420,81 +436,104 @@ export function DeckApp(): React.ReactElement {
     };
   }, [bank, hueEpoch]);
 
+  const postCommand = useCallback(
+    (command: DeckCommand): void => {
+      // 旧 host（app 未着）には command を送らない。パッド操作はそのまま。
+      if (sharedRef.current?.app === undefined) return;
+      commandIdRef.current += 1;
+      postRequest({
+        kind: 'deck:command',
+        id: `cmd-${commandIdRef.current}`,
+        command,
+      });
+    },
+    [postRequest],
+  );
+
+  const actionCtx: DeckActionContext = {
+    fireSlot(slot, cut) {
+      const scene = bankRef.current?.[slot];
+      if (!scene) return;
+      fireManual(scene, cut ? 'cut' : presetRef.current);
+    },
+    fireCursor() {
+      const scene = bankRef.current?.[cursorRef.current];
+      if (!scene) return;
+      fireManual(scene, presetRef.current);
+    },
+    moveCursor(dir) {
+      const code =
+        dir === 'left'
+          ? 'ArrowLeft'
+          : dir === 'right'
+            ? 'ArrowRight'
+            : dir === 'up'
+              ? 'ArrowUp'
+              : 'ArrowDown';
+      setCursor((slot) => moveGridCursor(slot, code, bankRef.current?.length ?? 0));
+    },
+    cycleTransition() {
+      setPreset((current) => nextPreset(current));
+    },
+    toggleAuto() {
+      setAutoOn((on) => !on);
+    },
+    cycleAutoMode() {
+      setAutoKind((kind) => (kind === 'seconds' ? 'bars' : 'seconds'));
+    },
+    bumpInterval,
+    rebuildBank: rebuildFromLive,
+    gachaBank,
+    postCommand,
+  };
+  ctxRef.current = actionCtx;
+
+  const app = shared?.app;
+  const consoleEnabled = app !== undefined;
+  const keyView: DeckKeyView | null =
+    app && shared
+      ? {
+          hueMode: app.hueMode,
+          fixedHue: app.fixedHue,
+          hue: shared.hue ?? app.fixedHue,
+          background: app.background,
+          autoCycle: app.autoCycle,
+          locked: shared.nowSec < shared.lockedUntilSec,
+        }
+      : null;
+  viewRef.current = keyView;
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (isEditableTarget(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
-      const size = bankRef.current?.length ?? 0;
-
-      if (e.code >= 'Digit1' && e.code <= 'Digit8') {
-        const scene = bankRef.current?.[Number(e.code.slice(5)) - 1];
-        if (!scene) return;
+      if (e.code === 'KeyF') {
         e.preventDefault();
-        fireManual(scene, e.shiftKey ? 'cut' : presetRef.current);
+        void toggleFullscreen();
         return;
       }
-
-      switch (e.code) {
-        case 'ArrowLeft':
-        case 'ArrowRight':
-        case 'ArrowUp':
-        case 'ArrowDown':
-          e.preventDefault();
-          setCursor((slot) => moveGridCursor(slot, e.code, size));
-          break;
-        case 'Enter':
-        case 'Space': {
-          const scene = bankRef.current?.[cursorRef.current];
-          if (!scene) return;
-          e.preventDefault();
-          fireManual(scene, presetRef.current);
-          break;
-        }
-        case 'KeyT':
-          e.preventDefault();
-          setPreset((current) => nextPreset(current));
-          break;
-        case 'KeyA':
-          e.preventDefault();
-          setAutoOn((on) => !on);
-          break;
-        case 'KeyM':
-          e.preventDefault();
-          setAutoKind((kind) => (kind === 'seconds' ? 'bars' : 'seconds'));
-          break;
-        case 'Minus':
-        case 'NumpadSubtract':
-          e.preventDefault();
-          bumpInterval(-1);
-          break;
-        case 'Equal':
-        case 'NumpadAdd':
-          e.preventDefault();
-          bumpInterval(1);
-          break;
-        case 'KeyR':
-          e.preventDefault();
-          rebuildFromLive();
-          break;
-        case 'KeyG':
-          e.preventDefault();
-          gachaBank();
-          break;
-        case 'KeyF':
-          e.preventDefault();
-          void toggleFullscreen();
-          break;
-        default:
-          break;
-      }
+      const action = keyToAction(e, viewRef.current);
+      if (action === null) return;
+      e.preventDefault();
+      const ctx = ctxRef.current;
+      if (ctx) dispatchDeckAction(action, ctx);
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [bumpInterval, fireManual, gachaBank, rebuildFromLive]);
+  }, []);
 
   const livePatch = shared?.currentPatch ?? null;
   const baseChanged =
     connected && livePatch !== null && bank !== null && isBaseChanged(livePatch, bank, bankBase);
   const lockRemain = shared ? formatLockRemain(shared.nowSec, shared.lockedUntilSec) : null;
+  const hueSliderValue = app
+    ? app.hueMode === 'fixed'
+      ? app.fixedHue
+      : (shared?.hue ?? app.fixedHue)
+    : 0;
+  const hueStatus =
+    app?.hueMode === 'fixed'
+      ? `${Math.round(app.fixedHue)}° fixed`
+      : `${Math.round(shared?.hue ?? 0)}°`;
 
   let banner: string | null = null;
   if (!connected && missingHost) banner = 'メイン窓が見つかりません';
@@ -506,8 +545,8 @@ export function DeckApp(): React.ReactElement {
         <div>
           <div className="deck-title">Scene Deck</div>
           <div className="deck-sub">
-            1–8 ポン出し · Shift+数字 cut · ←↑↓→ カーソル · Enter/Space 決定 · A auto · M 秒/小節 ·
-            −/= 間隔 · R 再生成 · G ガチャ
+            1–8 ポン出し · Shift+数字 cut · ←↑↓→ カーソル · Shift+←→ シーン · Enter/Space 決定 · T
+            tap · X 遷移 · Q ガチャ · W 細部 · A auto · R 再生成 · G バンク
           </div>
         </div>
         <div className="deck-toolbar">
@@ -551,13 +590,133 @@ export function DeckApp(): React.ReactElement {
         </div>
       </header>
 
+      <div className="deck-console">
+        <button
+          type="button"
+          className="btn"
+          disabled={!consoleEnabled}
+          onClick={() => postCommand({ kind: 'seed:gacha' })}
+        >
+          Q gacha
+        </button>
+        <button
+          type="button"
+          className="btn"
+          disabled={!consoleEnabled}
+          onClick={() => postCommand({ kind: 'patch:rerollDetails' })}
+        >
+          W details
+        </button>
+        <button
+          type="button"
+          className="btn icon"
+          disabled={!consoleEnabled}
+          aria-label="Previous scene"
+          onClick={() => postCommand({ kind: 'scene:shift', delta: -1 })}
+        >
+          ‹
+        </button>
+        <select
+          className="deck-scene-select"
+          disabled={!consoleEnabled}
+          value={app?.sceneId ?? ''}
+          aria-label="Scene"
+          onChange={(e) => postCommand({ kind: 'scene:set', sceneId: e.target.value })}
+        >
+          {app === undefined ? <option value="">scene</option> : null}
+          {scenes.map((s) => (
+            <option key={s.id} value={s.id}>
+              {s.name}
+            </option>
+          ))}
+        </select>
+        <button
+          type="button"
+          className="btn icon"
+          disabled={!consoleEnabled}
+          aria-label="Next scene"
+          onClick={() => postCommand({ kind: 'scene:shift', delta: 1 })}
+        >
+          ›
+        </button>
+        <button
+          type="button"
+          className={`btn toggle${app?.hueMode === 'fixed' ? ' on' : ''}`}
+          disabled={!consoleEnabled}
+          onClick={() => {
+            if (!app) return;
+            if (app.hueMode === 'fixed') {
+              postCommand({ kind: 'hue:mode', mode: 'cycle' });
+            } else {
+              postCommand({ kind: 'hue:fixed', hue: shared?.hue ?? app.fixedHue });
+            }
+          }}
+        >
+          hue {app?.hueMode === 'fixed' ? 'fixed' : 'cycle'}
+        </button>
+        <label className="deck-hue">
+          <input
+            type="range"
+            min={0}
+            max={360}
+            step={1}
+            disabled={!consoleEnabled}
+            value={hueSliderValue}
+            aria-label="Hue"
+            onChange={(e) => postCommand({ kind: 'hue:fixed', hue: Number(e.target.value) })}
+          />
+        </label>
+        <button
+          type="button"
+          className={`btn toggle${app?.background === 'transparent' ? ' on' : ''}`}
+          disabled={!consoleEnabled}
+          onClick={() => {
+            if (!app) return;
+            postCommand({
+              kind: 'background:set',
+              background: app.background === 'black' ? 'transparent' : 'black',
+            });
+          }}
+        >
+          bg {app?.background === 'transparent' ? 'clear' : 'black'}
+        </button>
+        <button
+          type="button"
+          className="btn tap"
+          disabled={!consoleEnabled}
+          onClick={() => postCommand({ kind: 'tempo:tap' })}
+        >
+          TAP
+        </button>
+        <button
+          type="button"
+          className={`btn toggle${lockRemain ? ' on' : ''}`}
+          disabled={!consoleEnabled}
+          onClick={() => postCommand({ kind: 'timeline:lock', seconds: lockRemain ? 0 : 30 })}
+        >
+          {lockRemain ? `unlock ${lockRemain}` : 'lock 30s'}
+        </button>
+      </div>
+
       <div className="deck-status">
         <span>
           conn <strong>{connected ? 'live' : missingHost ? 'missing' : 'waiting'}</strong>
         </span>
         <span>
-          hue <strong>{shared?.hue === undefined ? '—' : `${Math.round(shared.hue)}°`}</strong>
+          hue <strong>{hueStatus}</strong>
         </span>
+        {app ? (
+          <span>
+            bpm{' '}
+            <strong>
+              {app.bpm > 0 ? String(Math.round(app.bpm)) : '—'}
+              {app.tempoLocked ? ' ● locked' : ''}
+            </strong>
+          </span>
+        ) : null}
+        {app && !app.audioRunning ? (
+          <span className="deck-audio-stopped">AUDIO STOPPED</span>
+        ) : null}
         <span>
           t <strong>{shared ? `${shared.nowSec.toFixed(1)}s` : '—'}</strong>
         </span>

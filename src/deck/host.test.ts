@@ -6,8 +6,8 @@ import { inlineCatalog } from '../synth/generators';
 import type { TimelineOp, VisualEvent } from '../synth/timeline';
 import { TRANSITION_PRESETS } from '../synth/types';
 import type { TransitionPresetId, VisualPatch } from '../synth/types';
-import { handleDeckRequest, initDeckHost } from './host';
-import type { DeckResponse } from './protocol';
+import { handleDeckRequest, initDeckHost, type DeckHostHandlers } from './host';
+import type { DeckAppState, DeckCommand, DeckResponse } from './protocol';
 import { DECK_CHANNEL } from './protocol';
 
 const livePatch = derivePatch('deck-host-test', { catalog: inlineCatalog });
@@ -95,9 +95,41 @@ function triggerMsg(patch: VisualPatch, label: string, preset: TransitionPresetI
   return { kind: 'deck:trigger', patch, label, preset };
 }
 
-function collect(control: SynthControl, msg: unknown): DeckResponse[] {
+function sampleApp(overrides: Partial<DeckAppState> = {}): DeckAppState {
+  return {
+    sceneId: 'semantic-synth',
+    hueMode: 'cycle',
+    fixedHue: 200,
+    background: 'black',
+    seed: 'neon-prism-001',
+    autoCycle: false,
+    bpm: 128,
+    tempoLocked: true,
+    audioRunning: true,
+    ...overrides,
+  };
+}
+
+function stubHandlers(
+  init: {
+    app?: DeckAppState;
+    runCommand?: ReturnType<typeof vi.fn>;
+  } = {},
+): DeckHostHandlers & { runCommand: ReturnType<typeof vi.fn> } {
+  const runCommand = init.runCommand ?? vi.fn(() => ({ ok: true, issues: [] as string[] }));
+  return {
+    getAppState: () => init.app ?? sampleApp(),
+    runCommand,
+  };
+}
+
+function collect(
+  control: SynthControl,
+  msg: unknown,
+  handlers: DeckHostHandlers = stubHandlers(),
+): DeckResponse[] {
   const posted: DeckResponse[] = [];
-  handleDeckRequest(msg, control, (res) => posted.push(res));
+  handleDeckRequest(msg, control, handlers, (res) => posted.push(res));
   return posted;
 }
 
@@ -239,6 +271,7 @@ describe('handleDeckRequest', () => {
       true,
     );
     expect(state.hue).toBe(213.5);
+    expect(state.app).toEqual(sampleApp());
   });
 
   it('requestState reports a null currentPatch when the synth scene is inactive', () => {
@@ -248,6 +281,83 @@ describe('handleDeckRequest', () => {
       kind: 'deck:state',
       state: { currentPatch: null, nowSec: 0, barCount: 0 },
     });
+  });
+
+  it('command delegates to runCommand then posts commandResult and state', () => {
+    const { control, applyTimelineOp } = stubControl();
+    const handlers = stubHandlers();
+    const command: DeckCommand = { kind: 'seed:gacha' };
+    const posted = collect(control, { kind: 'deck:command', id: 'cmd-9', command }, handlers);
+
+    expect(handlers.runCommand).toHaveBeenCalledTimes(1);
+    expect(handlers.runCommand).toHaveBeenCalledWith(command);
+    expect(applyTimelineOp).not.toHaveBeenCalled();
+    expect(posted).toHaveLength(2);
+    expect(posted[0]).toEqual({
+      kind: 'deck:commandResult',
+      id: 'cmd-9',
+      ok: true,
+      issues: [],
+    });
+    expect(posted[1]?.kind).toBe('deck:state');
+    if (posted[1]?.kind === 'deck:state') {
+      expect(posted[1].state.app).toEqual(sampleApp());
+      expect(posted[1].state.hue).toBe(0);
+    }
+  });
+
+  it('commandResult carries handler failure issues', () => {
+    const { control } = stubControl();
+    const handlers = stubHandlers({
+      runCommand: vi.fn(() => ({ ok: false, issues: ['unknown scene: nope'] })),
+    });
+    const posted = collect(
+      control,
+      { kind: 'deck:command', id: 'cmd-fail', command: { kind: 'scene:set', sceneId: 'nope' } },
+      handlers,
+    );
+    expect(posted[0]).toEqual({
+      kind: 'deck:commandResult',
+      id: 'cmd-fail',
+      ok: false,
+      issues: ['unknown scene: nope'],
+    });
+    expect(posted[1]?.kind).toBe('deck:state');
+  });
+
+  it('handles timeline:lock inside host without calling runCommand', () => {
+    const nowSec = 12;
+    const { control, applyTimelineOp } = stubControl({ nowSec });
+    const handlers = stubHandlers();
+    const posted = collect(
+      control,
+      { kind: 'deck:command', id: 'lock-1', command: { kind: 'timeline:lock', seconds: 30 } },
+      handlers,
+    );
+
+    expect(handlers.runCommand).not.toHaveBeenCalled();
+    expect(applyTimelineOp).toHaveBeenCalledTimes(1);
+    expect(applyTimelineOp).toHaveBeenCalledWith({ op: 'setLockedUntil', sec: nowSec + 30 });
+    expect(posted[0]).toEqual({
+      kind: 'deck:commandResult',
+      id: 'lock-1',
+      ok: true,
+      issues: [],
+    });
+    expect(posted[1]?.kind).toBe('deck:state');
+  });
+
+  it('unlocks timeline:lock seconds=0 as nowSec+0', () => {
+    const nowSec = 8;
+    const { control, applyTimelineOp } = stubControl({ nowSec, lockedUntilSec: 40 });
+    const handlers = stubHandlers();
+    collect(
+      control,
+      { kind: 'deck:command', id: 'lock-0', command: { kind: 'timeline:lock', seconds: 0 } },
+      handlers,
+    );
+    expect(handlers.runCommand).not.toHaveBeenCalled();
+    expect(applyTimelineOp).toHaveBeenCalledWith({ op: 'setLockedUntil', sec: nowSec });
   });
 });
 
@@ -280,7 +390,7 @@ describe('initDeckHost', () => {
   it('returns null when BroadcastChannel is unavailable', () => {
     vi.stubGlobal('BroadcastChannel', undefined);
     try {
-      expect(initDeckHost()).toBeNull();
+      expect(initDeckHost(stubHandlers())).toBeNull();
     } finally {
       vi.unstubAllGlobals();
     }
@@ -288,7 +398,7 @@ describe('initDeckHost', () => {
 
   it('opens the deck channel and routes incoming requests through onmessage', () => {
     vi.stubGlobal('BroadcastChannel', FakeChannel);
-    const handle = initDeckHost();
+    const handle = initDeckHost(stubHandlers());
     expect(handle).not.toBeNull();
     const channel = FakeChannel.instances[0]!;
     expect(channel.name).toBe(DECK_CHANNEL);
@@ -306,7 +416,7 @@ describe('initDeckHost', () => {
   it('coalesces control notifications into one trailing deck:state and stops after close', () => {
     vi.useFakeTimers();
     vi.stubGlobal('BroadcastChannel', FakeChannel);
-    const handle = initDeckHost();
+    const handle = initDeckHost(stubHandlers());
     const channel = FakeChannel.instances[0]!;
 
     notifySynthControlChanged();

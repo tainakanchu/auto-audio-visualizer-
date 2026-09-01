@@ -5,6 +5,8 @@ import {
   parseDeckMode,
   parseDeckRequest,
   parseDeckResponse,
+  type DeckAppState,
+  type DeckCommand,
   type DeckSharedState,
 } from './protocol';
 
@@ -49,6 +51,25 @@ function sampleState(overrides: Partial<DeckSharedState> = {}): DeckSharedState 
     lastTriggerLabel: null,
     ...overrides,
   };
+}
+
+function sampleApp(overrides: Partial<DeckAppState> = {}): DeckAppState {
+  return {
+    sceneId: 'semantic-synth',
+    hueMode: 'cycle',
+    fixedHue: 200,
+    background: 'black',
+    seed: 'neon-prism-001',
+    autoCycle: false,
+    bpm: 128,
+    tempoLocked: true,
+    audioRunning: true,
+    ...overrides,
+  };
+}
+
+function commandMsg(command: DeckCommand, id = 'cmd-1'): unknown {
+  return { kind: 'deck:command', id, command };
 }
 
 describe('DECK_CHANNEL', () => {
@@ -132,6 +153,85 @@ describe('parseDeckRequest', () => {
     expect(
       parseDeckRequest({ kind: 'deck:trigger', patch: null, label: 'V1', preset: 'cut' }),
     ).toBeNull();
+  });
+
+  it('accepts every command kind', () => {
+    const goods: DeckCommand[] = [
+      { kind: 'seed:gacha' },
+      { kind: 'seed:set', seed: 'neon-tiger-042' },
+      { kind: 'patch:rerollDetails' },
+      { kind: 'scene:set', sceneId: 'bars' },
+      { kind: 'scene:shift', delta: 1 },
+      { kind: 'scene:shift', delta: -1 },
+      { kind: 'hue:mode', mode: 'cycle' },
+      { kind: 'hue:mode', mode: 'fixed' },
+      { kind: 'hue:fixed', hue: 0 },
+      { kind: 'hue:fixed', hue: 200 },
+      { kind: 'hue:fixed', hue: 360 },
+      { kind: 'background:set', background: 'black' },
+      { kind: 'background:set', background: 'transparent' },
+      { kind: 'tempo:tap' },
+      { kind: 'tempo:multiply', factor: 2 },
+      { kind: 'tempo:multiply', factor: 0.5 },
+      { kind: 'tempo:auto' },
+      { kind: 'timeline:lock', seconds: 0 },
+      { kind: 'timeline:lock', seconds: 30 },
+      { kind: 'autoCycle:set', on: true },
+      { kind: 'autoCycle:set', on: false },
+    ];
+    for (const command of goods) {
+      expect(parseDeckRequest(commandMsg(command))).toEqual({
+        kind: 'deck:command',
+        id: 'cmd-1',
+        command,
+      });
+    }
+  });
+
+  it('rejects command with missing or invalid envelope', () => {
+    expect(parseDeckRequest({ kind: 'deck:command' })).toBeNull();
+    expect(
+      parseDeckRequest({ kind: 'deck:command', id: 1, command: { kind: 'tempo:tap' } }),
+    ).toBeNull();
+    expect(parseDeckRequest({ kind: 'deck:command', id: 'x' })).toBeNull();
+    expect(parseDeckRequest({ kind: 'deck:command', id: 'x', command: null })).toBeNull();
+    expect(parseDeckRequest({ kind: 'deck:command', id: 'x', command: [] })).toBeNull();
+    expect(
+      parseDeckRequest({ kind: 'deck:command', id: 'x', command: { kind: 'nope' } }),
+    ).toBeNull();
+  });
+
+  it('rejects each command kind with invalid fields', () => {
+    const bads: unknown[] = [
+      { kind: 'seed:set' },
+      { kind: 'seed:set', seed: 12 },
+      { kind: 'scene:set' },
+      { kind: 'scene:set', sceneId: 0 },
+      { kind: 'scene:shift', delta: 0 },
+      { kind: 'scene:shift', delta: 2 },
+      { kind: 'scene:shift', delta: '1' },
+      { kind: 'hue:mode', mode: 'rainbow' },
+      { kind: 'hue:mode' },
+      { kind: 'hue:fixed', hue: Number.NaN },
+      { kind: 'hue:fixed', hue: Number.POSITIVE_INFINITY },
+      { kind: 'hue:fixed', hue: -1 },
+      { kind: 'hue:fixed', hue: 361 },
+      { kind: 'hue:fixed', hue: '200' },
+      { kind: 'background:set', background: 'white' },
+      { kind: 'tempo:multiply', factor: 1 },
+      { kind: 'tempo:multiply', factor: 3 },
+      { kind: 'tempo:multiply' },
+      { kind: 'timeline:lock', seconds: Number.NaN },
+      { kind: 'timeline:lock', seconds: Number.POSITIVE_INFINITY },
+      { kind: 'timeline:lock', seconds: -1 },
+      { kind: 'timeline:lock' },
+      { kind: 'autoCycle:set', on: 1 },
+      { kind: 'autoCycle:set', on: 'true' },
+      { kind: 'autoCycle:set' },
+    ];
+    for (const command of bads) {
+      expect(parseDeckRequest(commandMsg(command as DeckCommand))).toBeNull();
+    }
   });
 });
 
@@ -268,5 +368,80 @@ describe('parseDeckResponse', () => {
         state: { ...sampleState(), hue: null },
       }),
     ).toBeNull();
+  });
+
+  it('accepts commandResult', () => {
+    const msg = { kind: 'deck:commandResult' as const, id: 'cmd-1', ok: true, issues: [] };
+    expect(parseDeckResponse(msg)).toEqual(msg);
+    expect(
+      parseDeckResponse({
+        kind: 'deck:commandResult',
+        id: 'cmd-2',
+        ok: false,
+        issues: ['unknown scene: nope'],
+      }),
+    ).toEqual({
+      kind: 'deck:commandResult',
+      id: 'cmd-2',
+      ok: false,
+      issues: ['unknown scene: nope'],
+    });
+  });
+
+  it('rejects commandResult with missing or invalid fields', () => {
+    expect(parseDeckResponse({ kind: 'deck:commandResult' })).toBeNull();
+    expect(parseDeckResponse({ kind: 'deck:commandResult', id: 'x', ok: true })).toBeNull();
+    expect(
+      parseDeckResponse({ kind: 'deck:commandResult', id: 1, ok: true, issues: [] }),
+    ).toBeNull();
+    expect(
+      parseDeckResponse({ kind: 'deck:commandResult', id: 'x', ok: 'yes', issues: [] }),
+    ).toBeNull();
+    expect(
+      parseDeckResponse({ kind: 'deck:commandResult', id: 'x', ok: true, issues: [1] }),
+    ).toBeNull();
+  });
+
+  it('accepts a valid app block and keeps it', () => {
+    const withApp = sampleState({ app: sampleApp({ bpm: 0, audioRunning: false }) });
+    expect(parseDeckResponse({ kind: 'deck:state', state: withApp })).toEqual({
+      kind: 'deck:state',
+      state: withApp,
+    });
+  });
+
+  it('keeps app undefined when the field is missing (legacy host)', () => {
+    const empty = sampleState();
+    expect(empty.app).toBeUndefined();
+    const parsed = parseDeckResponse({ kind: 'deck:state', state: empty });
+    expect(parsed).toEqual({ kind: 'deck:state', state: empty });
+    if (parsed?.kind === 'deck:state') {
+      expect(parsed.state.app).toBeUndefined();
+    }
+  });
+
+  it('rejects app that is present but invalid', () => {
+    const invalids: unknown[] = [
+      null,
+      [],
+      { ...sampleApp(), sceneId: 1 },
+      { ...sampleApp(), hueMode: 'spin' },
+      { ...sampleApp(), fixedHue: Number.NaN },
+      { ...sampleApp(), background: 'white' },
+      { ...sampleApp(), seed: 3 },
+      { ...sampleApp(), autoCycle: 1 },
+      { ...sampleApp(), bpm: Number.POSITIVE_INFINITY },
+      { ...sampleApp(), tempoLocked: 'yes' },
+      { ...sampleApp(), audioRunning: 'no' },
+      { sceneId: 'bars' },
+    ];
+    for (const app of invalids) {
+      expect(
+        parseDeckResponse({
+          kind: 'deck:state',
+          state: { ...sampleState(), app },
+        }),
+      ).toBeNull();
+    }
   });
 });

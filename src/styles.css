@@ -850,6 +850,40 @@ html.deck-mode #root {
   align-items: center;
 }
 
+.deck-console {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.deck-console .btn.tap {
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.deck-scene-select {
+  width: auto;
+  min-width: 148px;
+  flex: 0 0 auto;
+}
+
+.deck-hue {
+  display: flex;
+  align-items: center;
+  min-width: 140px;
+}
+
+.deck-hue input[type='range'] {
+  width: 140px;
+}
+
+.deck-audio-stopped {
+  color: hsl(0, 82%, 64%);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
 .deck-status {
   display: flex;
   flex-wrap: wrap;

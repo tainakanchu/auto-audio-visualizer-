@@ -5,6 +5,8 @@
  * BroadcastChannel の生死（initDeckHost）。Timeline の intent.patch は検証を
  * 通さないので、ポン出しはここで parsePatch + gatePatchProposal を通してから積む。
  * add は lockedUntilSec の保護対象外なので、lock 中の拒否も host が見る。
+ * App レベル操作（seed / scene / hue / tempo）は handlers に委譲する。
+ * timeline:lock だけは control.applyTimelineOp を host が直接叩く。
  */
 import { gatePatchProposal } from '../synth/apply';
 import { createCatalog } from '../synth/catalog';
@@ -14,18 +16,23 @@ import { DEFAULT_BUDGETS } from '../synth/cost';
 import { allGeneratorDefinitions } from '../synth/generators';
 import { parsePatch } from '../synth/schema';
 import { TRANSITION_PRESETS } from '../synth/types';
-import type { DeckResponse, DeckSharedState } from './protocol';
+import type { DeckAppState, DeckCommand, DeckResponse, DeckSharedState } from './protocol';
 import { DECK_CHANNEL, parseDeckRequest } from './protocol';
 
 const metaCatalog = createCatalog(allGeneratorDefinitions());
 
 const STATE_THROTTLE_MS = 150;
 
+export interface DeckHostHandlers {
+  getAppState(): DeckAppState;
+  runCommand(command: DeckCommand): { ok: boolean; issues: string[] };
+}
+
 /** host が最後に受理した trigger の label。SynthControlState には載せない。 */
 let lastTriggerLabel: string | null = null;
 let eventCounter = 0;
 
-function snapshot(control: SynthControl): DeckSharedState {
+function snapshot(control: SynthControl, handlers: DeckHostHandlers): DeckSharedState {
   const state = control.getState();
   return {
     currentPatch: state.currentPatch,
@@ -37,6 +44,7 @@ function snapshot(control: SynthControl): DeckSharedState {
     recordingActive: state.recordingActive,
     lastTriggerLabel,
     hue: state.hue,
+    app: handlers.getAppState(),
   };
 }
 
@@ -49,13 +57,33 @@ function formatLockedRemain(nowSec: number, lockedUntilSec: number): string {
 export function handleDeckRequest(
   msg: unknown,
   control: SynthControl,
+  handlers: DeckHostHandlers,
   post: (res: DeckResponse) => void,
 ): void {
   const req = parseDeckRequest(msg);
   if (req === null) return;
 
   if (req.kind === 'deck:requestState') {
-    post({ kind: 'deck:state', state: snapshot(control) });
+    post({ kind: 'deck:state', state: snapshot(control, handlers) });
+    return;
+  }
+
+  if (req.kind === 'deck:command') {
+    let ok: boolean;
+    let issues: string[];
+    if (req.command.kind === 'timeline:lock') {
+      // 0 は nowSec+0 = nowSec で即解除（lock 判定は nowSec < lockedUntilSec）。
+      const sec = control.getState().nowSec + req.command.seconds;
+      const applied = control.applyTimelineOp({ op: 'setLockedUntil', sec });
+      ok = applied.ok;
+      issues = applied.ok ? [] : [applied.issue ?? 'setLockedUntil failed'];
+    } else {
+      const result = handlers.runCommand(req.command);
+      ok = result.ok;
+      issues = result.issues;
+    }
+    post({ kind: 'deck:commandResult', id: req.id, ok, issues });
+    post({ kind: 'deck:state', state: snapshot(control, handlers) });
     return;
   }
 
@@ -126,7 +154,7 @@ export function handleDeckRequest(
   }
 
   lastTriggerLabel = req.label;
-  post({ kind: 'deck:state', state: snapshot(control) });
+  post({ kind: 'deck:state', state: snapshot(control, handlers) });
 }
 
 function labelOf(msg: unknown): string {
@@ -139,7 +167,7 @@ function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
 
-export function initDeckHost(): { close(): void } | null {
+export function initDeckHost(handlers: DeckHostHandlers): { close(): void } | null {
   if (typeof BroadcastChannel !== 'function') return null;
 
   let channel: BroadcastChannel;
@@ -159,13 +187,13 @@ export function initDeckHost(): { close(): void } | null {
   };
 
   const postState = (): void => {
-    post({ kind: 'deck:state', state: snapshot(control) });
+    post({ kind: 'deck:state', state: snapshot(control, handlers) });
   };
 
   channel.onmessage = (ev: MessageEvent): void => {
     if (disposed) return;
     try {
-      handleDeckRequest(ev.data, control, post);
+      handleDeckRequest(ev.data, control, handlers, post);
     } catch (err) {
       // 想定外の throw でもデッキ窓を「待ち」のまま放置しない。
       const label = labelOf(ev.data);
