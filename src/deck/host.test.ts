@@ -1,4 +1,5 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { notifySynthControlChanged } from '../synth/control';
 import type { SynthControl, SynthControlState } from '../synth/control';
 import { derivePatch } from '../synth/derive';
 import { inlineCatalog } from '../synth/generators';
@@ -192,6 +193,22 @@ describe('handleDeckRequest', () => {
     expect(posted[0]?.kind).toBe('deck:state');
   });
 
+  it('reports a failed add without touching lastTriggerLabel', () => {
+    const { control, applyTimelineOp } = stubControl();
+    applyTimelineOp.mockImplementation(() => ({ ok: false, issue: 'no synth scene is active' }));
+
+    const posted = collect(control, triggerMsg(livePatch, 'V-fail', 'default'));
+    expect(posted).toEqual([
+      { kind: 'deck:result', ok: false, label: 'V-fail', issues: ['no synth scene is active'] },
+    ]);
+
+    const after = collect(control, { kind: 'deck:requestState' });
+    expect(after[0]?.kind).toBe('deck:state');
+    if (after[0]?.kind === 'deck:state') {
+      expect(after[0].state.lastTriggerLabel).not.toBe('V-fail');
+    }
+  });
+
   it('requestState returns every DeckSharedState field', () => {
     const patch = livePatch;
     const { control } = stubControl({
@@ -230,7 +247,32 @@ describe('handleDeckRequest', () => {
   });
 });
 
+/** postMessage を記録するだけの BroadcastChannel 代替。 */
+class FakeChannel {
+  static instances: FakeChannel[] = [];
+  readonly posted: unknown[] = [];
+  closed = false;
+  onmessage: ((ev: MessageEvent) => void) | null = null;
+  readonly name: string;
+  constructor(name: string) {
+    this.name = name;
+    FakeChannel.instances.push(this);
+  }
+  postMessage(msg: unknown): void {
+    this.posted.push(msg);
+  }
+  close(): void {
+    this.closed = true;
+  }
+}
+
 describe('initDeckHost', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    vi.useRealTimers();
+    FakeChannel.instances = [];
+  });
+
   it('returns null when BroadcastChannel is unavailable', () => {
     vi.stubGlobal('BroadcastChannel', undefined);
     try {
@@ -240,11 +282,42 @@ describe('initDeckHost', () => {
     }
   });
 
-  it('opens the deck channel', () => {
-    if (typeof BroadcastChannel !== 'function') return;
+  it('opens the deck channel and routes incoming requests through onmessage', () => {
+    vi.stubGlobal('BroadcastChannel', FakeChannel);
     const handle = initDeckHost();
     expect(handle).not.toBeNull();
+    const channel = FakeChannel.instances[0]!;
+    expect(channel.name).toBe(DECK_CHANNEL);
+
+    channel.onmessage?.({ data: { kind: 'deck:requestState' } } as MessageEvent);
+    expect(channel.posted).toHaveLength(1);
+    expect((channel.posted[0] as DeckResponse).kind).toBe('deck:state');
+
     handle?.close();
-    expect(DECK_CHANNEL).toBe('vj-deck-v1');
+    expect(channel.closed).toBe(true);
+    channel.onmessage?.({ data: { kind: 'deck:requestState' } } as MessageEvent);
+    expect(channel.posted).toHaveLength(1);
+  });
+
+  it('coalesces control notifications into one trailing deck:state and stops after close', () => {
+    vi.useFakeTimers();
+    vi.stubGlobal('BroadcastChannel', FakeChannel);
+    const handle = initDeckHost();
+    const channel = FakeChannel.instances[0]!;
+
+    notifySynthControlChanged();
+    notifySynthControlChanged();
+    notifySynthControlChanged();
+    expect(channel.posted).toHaveLength(0);
+    vi.advanceTimersByTime(149);
+    expect(channel.posted).toHaveLength(0);
+    vi.advanceTimersByTime(1);
+    expect(channel.posted).toHaveLength(1);
+    expect((channel.posted[0] as DeckResponse).kind).toBe('deck:state');
+
+    notifySynthControlChanged();
+    handle?.close();
+    vi.advanceTimersByTime(500);
+    expect(channel.posted).toHaveLength(1);
   });
 });

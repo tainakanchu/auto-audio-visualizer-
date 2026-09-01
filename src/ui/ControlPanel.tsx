@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import type { AudioEngine } from '../audio/AudioEngine';
+import { openSceneDeck } from '../deck/openDeck';
 import { scenes } from '../scenes';
 import {
   dbToFraction,
@@ -609,14 +610,7 @@ export function ControlPanel(props: ControlPanelProps): React.ReactElement {
       </div>
 
       <div className="row">
-        <button
-          type="button"
-          className="btn"
-          style={{ width: '100%' }}
-          onClick={() => {
-            window.open(location.pathname + '?deck=1', 'vj-scene-deck', 'width=1000,height=640');
-          }}
-        >
+        <button type="button" className="btn" style={{ width: '100%' }} onClick={openSceneDeck}>
           Scene Deck
         </button>
       </div>
