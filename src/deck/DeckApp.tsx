@@ -129,6 +129,8 @@ export function DeckApp(): React.ReactElement {
   const thumbsRef = useRef<ThumbRenderer | null>(null);
   const cursorRef = useRef(0);
   const pollMsRef = useRef(POLL_MS);
+  // host が最後に受理したスロット。楽観更新した playhead の巻き戻し先。
+  const acceptedSlotRef = useRef(0);
 
   const [shared, setShared] = useState<DeckSharedState | null>(null);
   const [missingHost, setMissingHost] = useState(false);
@@ -222,7 +224,12 @@ export function DeckApp(): React.ReactElement {
   const bumpInterval = useCallback(
     (dir: -1 | 1): void => {
       if (autoKind === 'seconds') {
-        setAutoSeconds((s) => clampAutoSeconds(s + dir * AUTO_SECONDS_STEP));
+        // 素の加減算だと MIN=2 に張り付いたあと 2,7,12… とグリッドから外れる。
+        setAutoSeconds((s) =>
+          clampAutoSeconds(
+            Math.round((s + dir * AUTO_SECONDS_STEP) / AUTO_SECONDS_STEP) * AUTO_SECONDS_STEP,
+          ),
+        );
       } else {
         setAutoBars((b) => clampAutoBars(b + dir));
       }
@@ -275,6 +282,8 @@ export function DeckApp(): React.ReactElement {
       }
       if (!parsed.ok) {
         setLastError(parsed.issues.join(' · ') || 'rejected');
+        // 拒否時 host は deck:state を投げない。楽観更新した playhead を戻す。
+        setPlayhead(acceptedSlotRef.current);
       }
     };
 
@@ -323,8 +332,20 @@ export function DeckApp(): React.ReactElement {
     setBank(buildSceneBank(patch, randomSeed(), inlineCatalog));
   }, [shared, bank]);
 
+  // playhead は楽観更新なので、host が受理した label から実位置へ寄せ直す。
   useEffect(() => {
-    const renderer = createThumbRenderer();
+    const label = shared?.lastTriggerLabel;
+    if (!label || !bank) return;
+    const scene = bank.find((s) => s.label === label);
+    if (!scene) return;
+    acceptedSlotRef.current = scene.slot;
+    setPlayhead((cur) => (cur === scene.slot ? cur : scene.slot));
+  }, [shared?.lastTriggerLabel, bank]);
+
+  useEffect(() => {
+    // retina で 192×108 を引き伸ばすとぼやける。DPR ぶん解像度を上げる。
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const renderer = createThumbRenderer(192 * dpr, 108 * dpr);
     thumbsRef.current = renderer;
     return () => {
       renderer.dispose();
@@ -446,8 +467,8 @@ export function DeckApp(): React.ReactElement {
         <div>
           <div className="deck-title">Scene Deck</div>
           <div className="deck-sub">
-            1–8 ポン出し · Shift+数字 cut · ←↑↓→ カーソル · A auto · M 秒/小節 · −/= 間隔 · R 再生成
-            · G ガチャ
+            1–8 ポン出し · Shift+数字 cut · ←↑↓→ カーソル · Enter/Space 決定 · A auto · M 秒/小節 ·
+            −/= 間隔 · R 再生成 · G ガチャ
           </div>
         </div>
         <div className="deck-toolbar">

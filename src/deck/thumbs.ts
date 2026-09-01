@@ -31,6 +31,9 @@ interface CachedProgram {
   uni: Uniforms;
 }
 
+/** 同トポロジのバンクなら 1〜2 本で足りる。多相バンクでも青天井にしない。 */
+const CACHE_LIMIT = 4;
+
 export function createThumbRenderer(w = 192, h = 108): ThumbRenderer {
   const width = Number.isFinite(w) && w > 0 ? Math.max(1, Math.round(w)) : 192;
   const height = Number.isFinite(h) && h > 0 ? Math.max(1, Math.round(h)) : 108;
@@ -68,9 +71,30 @@ export function createThumbRenderer(w = 192, h = 108): ThumbRenderer {
 
   const cache = new Map<string, CachedProgram | 'fail'>();
   let disposed = false;
+  // コンテキストロスト後は program も vao も dummy も無効。restore で組み直す。
+  let ready = true;
+
+  const onContextLost = (e: Event): void => {
+    // preventDefault しないとブラウザは復帰させてくれない。
+    e.preventDefault();
+    ready = false;
+  };
+  const onContextRestored = (): void => {
+    // ロスト前の program は無効。deleteProgram は呼ばずに捨てる。
+    cache.clear();
+    try {
+      vao = createEmptyVao(gl);
+      dummy = makeDummyTexture(gl);
+      ready = true;
+    } catch {
+      ready = false;
+    }
+  };
+  canvas.addEventListener('webglcontextlost', onContextLost);
+  canvas.addEventListener('webglcontextrestored', onContextRestored);
 
   const render = (patch: VisualPatch): string | null => {
-    if (disposed) return null;
+    if (disposed || !ready || gl.isContextLost()) return null;
     try {
       const assembled = assemblePatch(patch, inlineCatalog, { reactions: 'off' });
       const cached = getProgram(gl, cache, assembled.fragSrc);
@@ -127,6 +151,8 @@ export function createThumbRenderer(w = 192, h = 108): ThumbRenderer {
   const dispose = (): void => {
     if (disposed) return;
     disposed = true;
+    canvas.removeEventListener('webglcontextlost', onContextLost);
+    canvas.removeEventListener('webglcontextrestored', onContextRestored);
     for (const entry of cache.values()) {
       if (entry !== 'fail') gl.deleteProgram(entry.prog);
     }
@@ -152,10 +178,23 @@ function getProgram(
     const prog = compileProgram(gl, FULLSCREEN_VERT, fragSrc);
     const entry: CachedProgram = { prog, uni: new Uniforms(gl, prog) };
     cache.set(fragSrc, entry);
+    evictOldest(gl, cache);
     return entry;
   } catch {
     cache.set(fragSrc, 'fail');
+    evictOldest(gl, cache);
     return null;
+  }
+}
+
+/** 挿入順 LRU。Map は挿入順を保つので先頭が最古。 */
+function evictOldest(gl: WebGL2RenderingContext, cache: Map<string, CachedProgram | 'fail'>): void {
+  while (cache.size > CACHE_LIMIT) {
+    const oldest = cache.keys().next();
+    if (oldest.done) return;
+    const entry = cache.get(oldest.value);
+    cache.delete(oldest.value);
+    if (entry !== undefined && entry !== 'fail') gl.deleteProgram(entry.prog);
   }
 }
 
