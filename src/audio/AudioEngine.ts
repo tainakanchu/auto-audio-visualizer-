@@ -354,6 +354,11 @@ export class AudioEngine {
     f.tempoMode = s.tempoMode;
   }
 
+  /** Latest TempoTracker snapshot (copy). Updated when a frame is computed. */
+  getTempoState(): TempoState {
+    return { ...this.tempoState };
+  }
+
   /** Register a tap-tempo press (delegates to the tracker). */
   tapTempo(): void {
     this.tempo.tap(performance.now());

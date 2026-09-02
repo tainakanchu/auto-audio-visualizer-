@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AudioEngine } from './audio/AudioEngine';
-import { initDeckHost } from './deck/host';
+import { initDeckHost, type DeckHostHandlers } from './deck/host';
 import { openSceneDeck } from './deck/openDeck';
+import type { DeckAppState, DeckCommand } from './deck/protocol';
 import { Renderer } from './render/Renderer';
 import { scenes, sceneByIndex, sceneIndexById } from './scenes';
 import { initBridgeClient } from './synth/bridgeClient';
@@ -56,6 +57,23 @@ export function App(): React.ReactElement {
   // Latest settings, readable from the rAF/engine callbacks without re-binding.
   const settingsRef = useRef<Settings>(settings);
   settingsRef.current = settings;
+
+  // Host snapshots settingsRef on the same tick as runCommand. Write the ref
+  // before React's setState so deck:state after a command is not stale.
+  const applyUpdate = useCallback(
+    (patch: Partial<Settings>) => {
+      const next: Partial<Settings> = { ...patch };
+      if (next.fixedHue !== undefined) {
+        const hue = next.fixedHue;
+        next.fixedHue = Number.isFinite(hue)
+          ? Math.min(360, Math.max(0, hue))
+          : settingsRef.current.fixedHue;
+      }
+      settingsRef.current = { ...settingsRef.current, ...next };
+      update(next);
+    },
+    [update],
+  );
 
   // Latest variation, readable at Renderer-construction time.
   const variationRef = useRef(variation);
@@ -230,9 +248,9 @@ export function App(): React.ReactElement {
       // 開けなかったシーン（WebGL2 非対応環境の GL シーン）は設定にも残さない。
       // 残すと「選ばれているのに描かれない」状態になる。
       if (rendererRef.current && !rendererRef.current.setScene(id)) return;
-      update({ sceneId: id });
+      applyUpdate({ sceneId: id });
     },
-    [update],
+    [applyUpdate],
   );
 
   const shiftScene = useCallback(
@@ -244,18 +262,18 @@ export function App(): React.ReactElement {
         const next = sceneByIndex(cur + delta * step);
         if (next.id === settingsRef.current.sceneId) break;
         if (rendererRef.current?.setScene(next.id)) {
-          update({ sceneId: next.id });
+          applyUpdate({ sceneId: next.id });
           return;
         }
       }
     },
-    [update],
+    [applyUpdate],
   );
 
   // ---- Look gacha: reroll the seed ----
   const reroll = useCallback(() => {
-    update({ seed: randomSeed() });
-  }, [update]);
+    applyUpdate({ seed: randomSeed() });
+  }, [applyUpdate]);
 
   // ---- Reroll details, same topology: keep the exact operators (id/generatorId/
   // generatorVersion/order) that Semantic Synth currently has — and with them the
@@ -265,14 +283,14 @@ export function App(): React.ReactElement {
   // topology via the `seed` setting): `reroll` is the "new shape" gacha, this is the
   // "same shape, new details" one. Only meaningful on the semantic-synth scene, which
   // is the only scene with a VisualPatch (`currentPatch`) to reroll.
-  const rerollDetails = useCallback(() => {
+  const rerollDetails = useCallback((seed?: string) => {
     const control = getSynthControl();
     const current = control.getState().currentPatch;
     // No semantic-synth scene active (or it hasn't derived a patch yet) — nothing to
     // reroll. Backstops the disabled-button gating in ControlPanel for the moment
     // right after switching scenes, before the first frame has run.
     if (!current) return;
-    const next = rerollPatch(current, randomSeed(), { catalog: inlineCatalog });
+    const next = rerollPatch(current, seed ?? randomSeed(), { catalog: inlineCatalog });
     control.proposePatch(JSON.parse(serializePatch(next)) as unknown);
   }, []);
 
@@ -286,6 +304,78 @@ export function App(): React.ReactElement {
   const onTempoAuto = useCallback(() => {
     engineRef.current?.tempoAuto();
   }, []);
+
+  const getAppState = useCallback((): DeckAppState => {
+    const s = settingsRef.current;
+    const engine = engineRef.current;
+    const tempo = engine?.getTempoState();
+    return {
+      sceneId: s.sceneId,
+      hueMode: s.hueMode,
+      fixedHue: s.fixedHue,
+      baseHue: rendererRef.current?.currentHue ?? s.fixedHue,
+      background: s.background,
+      seed: s.seed,
+      autoCycle: s.autoCycle,
+      bpm: tempo?.bpm ?? 0,
+      tempoLocked: tempo?.tempoLocked ?? false,
+      audioRunning: engine?.running ?? false,
+    };
+  }, []);
+
+  const runCommand = useCallback(
+    (command: DeckCommand): { ok: boolean; issues: string[] } => {
+      switch (command.kind) {
+        case 'seed:gacha':
+          reroll();
+          return { ok: true, issues: [] };
+        case 'seed:set':
+          applyUpdate({ seed: command.seed });
+          return { ok: true, issues: [] };
+        case 'patch:rerollDetails':
+          rerollDetails(command.seed);
+          return { ok: true, issues: [] };
+        case 'scene:set':
+          if (!scenes.some((s) => s.id === command.sceneId)) {
+            return { ok: false, issues: [`unknown scene: ${command.sceneId}`] };
+          }
+          setScene(command.sceneId);
+          return { ok: true, issues: [] };
+        case 'scene:shift':
+          shiftScene(command.delta);
+          return { ok: true, issues: [] };
+        case 'hue:mode':
+          applyUpdate({ hueMode: command.mode });
+          return { ok: true, issues: [] };
+        case 'hue:fixed':
+          applyUpdate({ hueMode: 'fixed', fixedHue: command.hue });
+          return { ok: true, issues: [] };
+        case 'background:set':
+          applyUpdate({ background: command.background });
+          return { ok: true, issues: [] };
+        case 'tempo:tap':
+          onTap();
+          return { ok: true, issues: [] };
+        case 'tempo:multiply':
+          onTempoMultiply(command.factor);
+          return { ok: true, issues: [] };
+        case 'tempo:auto':
+          onTempoAuto();
+          return { ok: true, issues: [] };
+        case 'timeline:lock':
+          return { ok: false, issues: ['timeline:lock is handled by host'] };
+        case 'autoCycle:set':
+          applyUpdate({ autoCycle: command.on });
+          return { ok: true, issues: [] };
+      }
+    },
+    [reroll, applyUpdate, rerollDetails, setScene, shiftScene, onTap, onTempoMultiply, onTempoAuto],
+  );
+
+  const getAppStateRef = useRef(getAppState);
+  getAppStateRef.current = getAppState;
+  const runCommandRef = useRef(runCommand);
+  runCommandRef.current = runCommand;
 
   // Push variation changes (seed reroll / edit) to the renderer, which re-inits
   // the active scene so element-count arrays re-allocate against the new look.
@@ -436,7 +526,11 @@ export function App(): React.ReactElement {
   // デッキ host は BroadcastChannel のみなので常時起動する（ネットワーク副作用なし）。
   useEffect(() => {
     const handle = initBridgeClient();
-    const deck = initDeckHost();
+    const handlers: DeckHostHandlers = {
+      getAppState: () => getAppStateRef.current(),
+      runCommand: (command) => runCommandRef.current(command),
+    };
+    const deck = initDeckHost(handlers);
     // StrictMode では effect が2回走るので、必ず畳んで多重接続を防ぐ。
     return () => {
       handle?.close();

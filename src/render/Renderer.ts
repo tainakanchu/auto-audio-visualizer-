@@ -322,6 +322,14 @@ export class Renderer {
     return this.current?.id ?? null;
   }
 
+  /**
+   * Base hue (0..360) before `variation.hueOffset` is folded in.
+   * `Settings.fixedHue` writes this value; scenes see `currentHue + hueOffset`.
+   */
+  get currentHue(): number {
+    return this.hue;
+  }
+
   start(): void {
     if (this.rafId) return;
     this.startTime = this.clock.now();
