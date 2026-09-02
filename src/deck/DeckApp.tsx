@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { scenes } from '../scenes';
-import { inlineCatalog } from '../synth/generators';
+import { createCatalog } from '../synth/catalog';
+import { allGeneratorDefinitions, inlineCatalog } from '../synth/generators';
 import { serializePatch } from '../synth/schema';
 import type { TransitionPresetId, VisualPatch } from '../synth/types';
 import { randomSeed } from '../variation/generate';
@@ -27,6 +28,19 @@ import {
   type AutoMode,
   type AutoOrder,
 } from './autoAdvance';
+import {
+  BANK_SLOT_IDS,
+  emptyBankStore,
+  isBankSnapshotStale,
+  loadBankStore,
+  makeBankSnapshot,
+  nextEmptySlot,
+  parseBankSnapshot,
+  saveBankStore,
+  type BankSlotId,
+  type DeckBankSnapshot,
+  type DeckBankStore,
+} from './bankStore';
 import { circularHueDelta } from './hue';
 import { formatMidiTrigger } from './midi';
 import { useMidi } from './useMidi';
@@ -38,7 +52,7 @@ import {
   type DeckSharedState,
 } from './protocol';
 import { createThumbRenderer, type ThumbRenderer } from './thumbs';
-import { buildSceneBank, type DeckScene } from './variations';
+import { buildSceneBank, SCENE_BANK_SIZE, type DeckScene } from './variations';
 
 const PRESET_CYCLE: TransitionPresetId[] = ['cut', 'default', 'slow'];
 const CONNECT_TIMEOUT_MS = 1500;
@@ -49,6 +63,43 @@ const GRID_COLS = 4;
 const GRID_ROWS = 2;
 /** hue サイクル中に全サムネを描き直す最短円環距離。小さすぎると毎秒 8 draw になる。 */
 const HUE_REDRAW_DEG = 12;
+const BANK_AUTOSAVE_MS = 500;
+const BANK_LONG_PRESS_MS = 500;
+const META_CATALOG = createCatalog(allGeneratorDefinitions());
+
+function readDeckBankStore(): DeckBankStore {
+  try {
+    return loadBankStore(localStorage);
+  } catch {
+    return emptyBankStore();
+  }
+}
+
+function writeDeckBankStore(store: DeckBankStore): string | null {
+  try {
+    return saveBankStore(localStorage, store).warning;
+  } catch {
+    return 'バンクを保存できませんでした（容量不足？）';
+  }
+}
+
+function clampBankCursor(value: number): number {
+  if (!Number.isFinite(value)) return 0;
+  const n = Math.trunc(value);
+  if (n < 0) return 0;
+  if (n >= SCENE_BANK_SIZE) return SCENE_BANK_SIZE - 1;
+  return n;
+}
+
+function restoreAuto(snap: DeckBankSnapshot): DeckBankSnapshot['auto'] {
+  return {
+    on: snap.auto.on,
+    kind: snap.auto.kind,
+    order: snap.auto.order,
+    seconds: clampAutoSeconds(snap.auto.seconds),
+    bars: clampAutoBars(snap.auto.bars),
+  };
+}
 
 function isEditableTarget(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
@@ -173,6 +224,20 @@ export function DeckApp(): React.ReactElement {
   const ctxRef = useRef<DeckActionContext | null>(null);
   // host が最後に受理したスロット。楽観更新した playhead の巻き戻し先。
   const acceptedSlotRef = useRef(0);
+  const bankSeedRef = useRef('');
+  const bankBaseRef = useRef<VisualPatch | null>(null);
+  const autoOnRef = useRef(false);
+  const autoKindRef = useRef<AutoKind>('seconds');
+  const autoOrderRef = useRef<AutoOrder>('sequential');
+  const autoSecondsRef = useRef(AUTO_SECONDS_DEFAULT);
+  const autoBarsRef = useRef(AUTO_BARS_DEFAULT);
+  const autosaveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const saveToNextRef = useRef<() => void>(() => {});
+  const longPressRef = useRef<{ id: BankSlotId; timer: ReturnType<typeof setTimeout> } | null>(
+    null,
+  );
+  const ignoreSlotClickRef = useRef(false);
+  const skipRenameBlurRef = useRef(false);
 
   const midiDispatch = useCallback((action: DeckAction): void => {
     const ctx = ctxRef.current;
@@ -182,27 +247,55 @@ export function DeckApp(): React.ReactElement {
 
   const [shared, setShared] = useState<DeckSharedState | null>(null);
   const [missingHost, setMissingHost] = useState(false);
-  const [bank, setBank] = useState<DeckScene[] | null>(null);
-  const [bankBase, setBankBase] = useState<VisualPatch | null>(null);
-  const [preset, setPreset] = useState<TransitionPresetId>('default');
+  const [initialStore] = useState(readDeckBankStore);
+  const storeRef = useRef<DeckBankStore>(initialStore);
+  const lastMainSeedRef = useRef<string | undefined>(initialStore.current?.mainSeed);
+  const restored = initialStore.current;
+  const [bank, setBank] = useState<DeckScene[] | null>(() =>
+    restored ? buildSceneBank(restored.base, restored.bankSeed, inlineCatalog) : null,
+  );
+  const [bankBase, setBankBase] = useState<VisualPatch | null>(restored?.base ?? null);
+  const [bankSeed, setBankSeed] = useState(restored?.bankSeed ?? '');
+  const restoredAuto = restored ? restoreAuto(restored) : null;
+  const [preset, setPreset] = useState<TransitionPresetId>(restored?.preset ?? 'default');
   const [lastError, setLastError] = useState<string | null>(null);
-  const [cursor, setCursor] = useState(0);
+  const [cursor, setCursor] = useState(restored ? clampBankCursor(restored.cursor) : 0);
   const [playhead, setPlayhead] = useState(0);
-  const [autoOn, setAutoOn] = useState(false);
-  const [autoKind, setAutoKind] = useState<AutoKind>('seconds');
-  const [autoOrder, setAutoOrder] = useState<AutoOrder>('sequential');
-  const [autoSeconds, setAutoSeconds] = useState(AUTO_SECONDS_DEFAULT);
-  const [autoBars, setAutoBars] = useState(AUTO_BARS_DEFAULT);
+  const [autoOn, setAutoOn] = useState(restoredAuto?.on ?? false);
+  const [autoKind, setAutoKind] = useState<AutoKind>(restoredAuto?.kind ?? 'seconds');
+  const [autoOrder, setAutoOrder] = useState<AutoOrder>(restoredAuto?.order ?? 'sequential');
+  const [autoSeconds, setAutoSeconds] = useState(restoredAuto?.seconds ?? AUTO_SECONDS_DEFAULT);
+  const [autoBars, setAutoBars] = useState(restoredAuto?.bars ?? AUTO_BARS_DEFAULT);
   const [thumbUrls, setThumbUrls] = useState<Array<string | null>>([]);
   const [hueEpoch, setHueEpoch] = useState(0);
   const [hueEcho, setHueEcho] = useState<number | null>(null);
+  const [slotMap, setSlotMap] = useState(initialStore.slots);
+  const [activeSlotId, setActiveSlotId] = useState<BankSlotId | null>(null);
+  const [bankStale, setBankStale] = useState(() =>
+    restored ? isBankSnapshotStale(restored, META_CATALOG) : false,
+  );
+  const [renamingSlot, setRenamingSlot] = useState<BankSlotId | null>(null);
+  const [bankMenuOpen, setBankMenuOpen] = useState(false);
+  const [clearArmed, setClearArmed] = useState(false);
+  const [bankImport, setBankImport] = useState('');
+  const [bankExportOk, setBankExportOk] = useState(false);
+  const [bankImportError, setBankImportError] = useState<string | null>(null);
+  const [bankSaveWarning, setBankSaveWarning] = useState<string | null>(null);
 
   bankRef.current = bank;
   sharedRef.current = shared;
   presetRef.current = preset;
   cursorRef.current = cursor;
+  bankSeedRef.current = bankSeed;
+  bankBaseRef.current = bankBase;
+  autoOnRef.current = autoOn;
+  autoKindRef.current = autoKind;
+  autoOrderRef.current = autoOrder;
+  autoSecondsRef.current = autoSeconds;
+  autoBarsRef.current = autoBars;
   pollMsRef.current = autoOn && autoKind === 'bars' ? POLL_BARS_MS : POLL_MS;
   hueRef.current = shared?.hue ?? 0;
+  if (shared?.app?.seed) lastMainSeedRef.current = shared.app.seed;
 
   const connected = shared !== null;
   const midi = useMidi({
@@ -270,15 +363,21 @@ export function DeckApp(): React.ReactElement {
   const rebuildFromLive = useCallback((): void => {
     const live = sharedRef.current?.currentPatch;
     if (!live) return;
-    const next = buildSceneBank(live, randomSeed(), inlineCatalog);
+    const seed = randomSeed();
+    setBankSeed(seed);
     setBankBase(live);
-    setBank(next);
+    setBank(buildSceneBank(live, seed, inlineCatalog));
+    setBankStale(false);
+    setActiveSlotId(null);
   }, []);
 
   const gachaBank = useCallback((): void => {
     const base = bankBase;
     if (!base) return;
-    setBank(buildSceneBank(base, randomSeed(), inlineCatalog));
+    const seed = randomSeed();
+    setBankSeed(seed);
+    setBank(buildSceneBank(base, seed, inlineCatalog));
+    setActiveSlotId(null);
   }, [bankBase]);
 
   const bumpInterval = useCallback(
@@ -410,12 +509,16 @@ export function DeckApp(): React.ReactElement {
   }, []);
 
   // 初回の currentPatch だけでバンクを組む。トリガー後の追従再生成はドリフトするのでしない。
+  // store.current から復元済みなら bank !== null なのでここは走らない。
   useEffect(() => {
     if (bank !== null) return;
     const patch = shared?.currentPatch;
     if (!patch) return;
+    const seed = randomSeed();
+    setBankSeed(seed);
     setBankBase(patch);
-    setBank(buildSceneBank(patch, randomSeed(), inlineCatalog));
+    setBank(buildSceneBank(patch, seed, inlineCatalog));
+    setBankStale(false);
   }, [shared, bank]);
 
   // playhead は楽観更新なので、host が受理した label から実位置へ寄せ直す。
@@ -511,6 +614,198 @@ export function DeckApp(): React.ReactElement {
     [postRequest],
   );
 
+  const persistStore = useCallback((next: DeckBankStore): void => {
+    storeRef.current = next;
+    setSlotMap(next.slots);
+    setBankSaveWarning(writeDeckBankStore(next));
+  }, []);
+
+  const captureCurrent = useCallback((name = ''): DeckBankSnapshot | null => {
+    const base = bankBaseRef.current;
+    const seed = bankSeedRef.current;
+    if (base === null || seed === '') return null;
+    const mainSeed = sharedRef.current?.app?.seed ?? lastMainSeedRef.current;
+    return makeBankSnapshot({
+      name,
+      base,
+      bankSeed: seed,
+      preset: presetRef.current,
+      auto: {
+        on: autoOnRef.current,
+        kind: autoKindRef.current,
+        order: autoOrderRef.current,
+        seconds: autoSecondsRef.current,
+        bars: autoBarsRef.current,
+      },
+      cursor: cursorRef.current,
+      mainSeed,
+    });
+  }, []);
+
+  const applySnapshot = useCallback(
+    (snap: DeckBankSnapshot, opts?: { sendSeed?: boolean }): void => {
+      const auto = restoreAuto(snap);
+      setBankBase(snap.base);
+      setBankSeed(snap.bankSeed);
+      setBank(buildSceneBank(snap.base, snap.bankSeed, inlineCatalog));
+      setPreset(snap.preset);
+      setAutoOn(auto.on);
+      setAutoKind(auto.kind);
+      setAutoOrder(auto.order);
+      setAutoSeconds(auto.seconds);
+      setAutoBars(auto.bars);
+      setCursor(clampBankCursor(snap.cursor));
+      setBankStale(isBankSnapshotStale(snap, META_CATALOG));
+      lastMainSeedRef.current = snap.mainSeed;
+      // 呼び出しだけでは live 画を切り替えない。seed:set は Settings.seed の復元だけ。
+      if (opts?.sendSeed && snap.mainSeed) {
+        postCommand({ kind: 'seed:set', seed: snap.mainSeed });
+      }
+    },
+    [postCommand],
+  );
+
+  // bankBase が無い（未接続・未復元）ときは書かない。500ms debounce。
+  useEffect(() => {
+    if (bankBase === null || bankSeed === '') return;
+    if (autosaveTimerRef.current !== null) {
+      window.clearTimeout(autosaveTimerRef.current);
+    }
+    autosaveTimerRef.current = window.setTimeout(() => {
+      autosaveTimerRef.current = null;
+      const snap = captureCurrent(storeRef.current.current?.name ?? '');
+      if (snap === null) return;
+      persistStore({ ...storeRef.current, current: snap });
+    }, BANK_AUTOSAVE_MS);
+    return () => {
+      if (autosaveTimerRef.current === null) return;
+      window.clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    };
+  }, [
+    bank,
+    bankSeed,
+    bankBase,
+    preset,
+    autoOn,
+    autoKind,
+    autoOrder,
+    autoSeconds,
+    autoBars,
+    cursor,
+    shared?.app?.seed,
+    captureCurrent,
+    persistStore,
+  ]);
+
+  const saveToSlot = useCallback(
+    (id: BankSlotId): void => {
+      const prev = storeRef.current.slots[id];
+      const snap = captureCurrent(prev?.name ?? '');
+      if (snap === null) return;
+      persistStore({
+        ...storeRef.current,
+        current: snap,
+        slots: { ...storeRef.current.slots, [id]: snap },
+      });
+      setActiveSlotId(id);
+    },
+    [captureCurrent, persistStore],
+  );
+
+  const saveToNextEmpty = useCallback((): void => {
+    saveToSlot(nextEmptySlot(storeRef.current));
+  }, [saveToSlot]);
+  saveToNextRef.current = saveToNextEmpty;
+
+  const loadSlot = useCallback(
+    (id: BankSlotId): void => {
+      const snap = storeRef.current.slots[id];
+      if (!snap) return;
+      applySnapshot(snap, { sendSeed: true });
+      persistStore({ ...storeRef.current, current: snap });
+      setActiveSlotId(id);
+    },
+    [applySnapshot, persistStore],
+  );
+
+  const renameSlot = useCallback(
+    (id: BankSlotId, name: string): void => {
+      const snap = storeRef.current.slots[id];
+      if (!snap) return;
+      persistStore({
+        ...storeRef.current,
+        slots: { ...storeRef.current.slots, [id]: { ...snap, name } },
+      });
+    },
+    [persistStore],
+  );
+
+  const clearCurrent = useCallback((): void => {
+    if (autosaveTimerRef.current !== null) {
+      window.clearTimeout(autosaveTimerRef.current);
+      autosaveTimerRef.current = null;
+    }
+    persistStore({ ...storeRef.current, current: null });
+    setClearArmed(false);
+    setBankMenuOpen(false);
+  }, [persistStore]);
+
+  const exportCurrent = useCallback(async (): Promise<void> => {
+    setBankExportOk(false);
+    const snap = captureCurrent(storeRef.current.current?.name ?? '');
+    if (snap === null) return;
+    try {
+      await navigator.clipboard.writeText(JSON.stringify(snap, null, 2));
+      setBankExportOk(true);
+      setBankImportError(null);
+    } catch {
+      setBankImportError('clipboard に書けませんでした');
+    }
+  }, [captureCurrent]);
+
+  const importSnapshotText = useCallback(
+    (text: string): void => {
+      setBankExportOk(false);
+      let parsed: unknown;
+      try {
+        parsed = JSON.parse(text) as unknown;
+      } catch {
+        setBankImportError('JSON が読めません');
+        return;
+      }
+      const snap = parseBankSnapshot(parsed);
+      if (snap === null) {
+        setBankImportError('スナップショットが不正です');
+        return;
+      }
+      applySnapshot(snap, { sendSeed: true });
+      persistStore({ ...storeRef.current, current: snap });
+      setActiveSlotId(null);
+      setBankImportError(null);
+    },
+    [applySnapshot, persistStore],
+  );
+
+  const startSlotPress = useCallback((id: BankSlotId): void => {
+    if (longPressRef.current) window.clearTimeout(longPressRef.current.timer);
+    longPressRef.current = {
+      id,
+      timer: window.setTimeout(() => {
+        longPressRef.current = null;
+        if (!storeRef.current.slots[id]) return;
+        ignoreSlotClickRef.current = true;
+        setRenamingSlot(id);
+      }, BANK_LONG_PRESS_MS),
+    };
+  }, []);
+
+  const endSlotPress = useCallback((): void => {
+    if (!longPressRef.current) return;
+    window.clearTimeout(longPressRef.current.timer);
+    longPressRef.current = null;
+  }, []);
+
   const actionCtx: DeckActionContext = {
     fireSlot(slot, cut) {
       const scene = bankRef.current?.[slot];
@@ -582,6 +877,12 @@ export function DeckApp(): React.ReactElement {
         void toggleFullscreen();
         return;
       }
+      // スロット呼び出しはキーに載せない。Shift+S は次の空き（無ければ A）へ保存。
+      if (e.code === 'KeyS' && e.shiftKey) {
+        e.preventDefault();
+        saveToNextRef.current();
+        return;
+      }
       const action = keyToAction(e, viewRef.current);
       if (action === null) return;
       e.preventDefault();
@@ -614,7 +915,7 @@ export function DeckApp(): React.ReactElement {
           <div className="deck-sub">
             1–8 ポン出し · Shift+数字 cut · ←↑↓→ カーソル · Shift+←→ シーン · Enter/Space 決定 · T
             tap · , ÷2 · . ×2 · / AUTO · X 遷移 · Q ガチャ · W 細部 · A auto · Shift+A autocycle · R
-            再生成 · G バンク
+            再生成 · G バンク · Shift+S 手札保存
           </div>
         </div>
         <div className="deck-toolbar">
@@ -655,6 +956,76 @@ export function DeckApp(): React.ReactElement {
           <button type="button" className="btn" onClick={gachaBank} disabled={bankBase === null}>
             G gacha
           </button>
+          <span className="deck-banks-label">A–H</span>
+          {BANK_SLOT_IDS.map((id) => {
+            const filled = slotMap[id] !== undefined;
+            if (renamingSlot === id) {
+              return (
+                <input
+                  key={id}
+                  className="deck-bank-name"
+                  defaultValue={slotMap[id]?.name ?? ''}
+                  autoFocus
+                  aria-label={`Bank ${id} name`}
+                  onBlur={(e) => {
+                    if (skipRenameBlurRef.current) {
+                      skipRenameBlurRef.current = false;
+                      return;
+                    }
+                    renameSlot(id, e.target.value);
+                    setRenamingSlot(null);
+                  }}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault();
+                      e.currentTarget.blur();
+                    }
+                    if (e.key === 'Escape') {
+                      e.preventDefault();
+                      skipRenameBlurRef.current = true;
+                      setRenamingSlot(null);
+                    }
+                  }}
+                />
+              );
+            }
+            return (
+              <button
+                key={id}
+                type="button"
+                className={`btn deck-bank-slot${filled ? '' : ' empty'}${activeSlotId === id ? ' toggle on' : ''}`}
+                aria-label={`Bank ${id}`}
+                title={
+                  filled
+                    ? `${id}${slotMap[id]?.name ? ` · ${slotMap[id]?.name}` : ''} · click 呼出 · Shift+click 保存 · 右クリックで改名`
+                    : `${id} 空 · Shift+click で保存`
+                }
+                disabled={bankBase === null && !filled}
+                onPointerDown={() => startSlotPress(id)}
+                onPointerUp={endSlotPress}
+                onPointerLeave={endSlotPress}
+                onPointerCancel={endSlotPress}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  endSlotPress();
+                  if (slotMap[id]) setRenamingSlot(id);
+                }}
+                onClick={(e) => {
+                  if (ignoreSlotClickRef.current) {
+                    ignoreSlotClickRef.current = false;
+                    return;
+                  }
+                  if (e.shiftKey) {
+                    saveToSlot(id);
+                    return;
+                  }
+                  loadSlot(id);
+                }}
+              >
+                {id}
+              </button>
+            );
+          })}
           <button
             type="button"
             className={`btn toggle${midi.status === 'on' ? ' on' : ''}`}
@@ -679,6 +1050,54 @@ export function DeckApp(): React.ReactElement {
           </button>
         </div>
       </header>
+
+      <div className="deck-banks">
+        <div className="deck-banks-row">
+          <span className="deck-banks-label">手札</span>
+          <button
+            type="button"
+            className="btn"
+            disabled={bankBase === null}
+            onClick={() => void exportCurrent()}
+          >
+            {bankExportOk ? 'copied' : 'JSON copy'}
+          </button>
+          <button type="button" className="btn" onClick={() => importSnapshotText(bankImport)}>
+            JSON paste
+          </button>
+          <button
+            type="button"
+            className={`btn toggle${bankMenuOpen ? ' on' : ''}`}
+            onClick={() => {
+              setBankMenuOpen((open) => !open);
+              setClearArmed(false);
+            }}
+          >
+            menu
+          </button>
+        </div>
+        {bankMenuOpen ? (
+          <div className="deck-banks-row">
+            {clearArmed ? (
+              <button type="button" className="btn" onClick={clearCurrent}>
+                confirm clear current
+              </button>
+            ) : (
+              <button type="button" className="btn" onClick={() => setClearArmed(true)}>
+                clear current
+              </button>
+            )}
+          </div>
+        ) : null}
+        <textarea
+          className="deck-bank-json"
+          rows={2}
+          value={bankImport}
+          onChange={(e) => setBankImport(e.target.value)}
+          placeholder='{"version":1,"name":"","base":…}'
+          aria-label="Bank snapshot JSON"
+        />
+      </div>
 
       <div className="deck-midi">
         <div className="deck-midi-row">
@@ -999,7 +1418,12 @@ export function DeckApp(): React.ReactElement {
       </div>
 
       {banner ? <div className="deck-banner warn">{banner}</div> : null}
+      {bankStale ? (
+        <div className="deck-banner warn">STALE: generator 更新あり。R で live から取り直し</div>
+      ) : null}
       {baseChanged ? <div className="deck-banner warn">BASE CHANGED — R で再生成</div> : null}
+      {bankSaveWarning ? <div className="deck-banner warn">{bankSaveWarning}</div> : null}
+      {bankImportError ? <div className="deck-banner warn">{bankImportError}</div> : null}
       {waitingForTempo ? (
         <div className="deck-banner warn">bars オートは tempo LOCK が必要です — 待機中</div>
       ) : null}
