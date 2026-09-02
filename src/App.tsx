@@ -58,6 +58,23 @@ export function App(): React.ReactElement {
   const settingsRef = useRef<Settings>(settings);
   settingsRef.current = settings;
 
+  // Host snapshots settingsRef on the same tick as runCommand. Write the ref
+  // before React's setState so deck:state after a command is not stale.
+  const applyUpdate = useCallback(
+    (patch: Partial<Settings>) => {
+      const next: Partial<Settings> = { ...patch };
+      if (next.fixedHue !== undefined) {
+        const hue = next.fixedHue;
+        next.fixedHue = Number.isFinite(hue)
+          ? Math.min(360, Math.max(0, hue))
+          : settingsRef.current.fixedHue;
+      }
+      settingsRef.current = { ...settingsRef.current, ...next };
+      update(next);
+    },
+    [update],
+  );
+
   // Latest variation, readable at Renderer-construction time.
   const variationRef = useRef(variation);
   variationRef.current = variation;
@@ -231,9 +248,9 @@ export function App(): React.ReactElement {
       // 開けなかったシーン（WebGL2 非対応環境の GL シーン）は設定にも残さない。
       // 残すと「選ばれているのに描かれない」状態になる。
       if (rendererRef.current && !rendererRef.current.setScene(id)) return;
-      update({ sceneId: id });
+      applyUpdate({ sceneId: id });
     },
-    [update],
+    [applyUpdate],
   );
 
   const shiftScene = useCallback(
@@ -245,18 +262,18 @@ export function App(): React.ReactElement {
         const next = sceneByIndex(cur + delta * step);
         if (next.id === settingsRef.current.sceneId) break;
         if (rendererRef.current?.setScene(next.id)) {
-          update({ sceneId: next.id });
+          applyUpdate({ sceneId: next.id });
           return;
         }
       }
     },
-    [update],
+    [applyUpdate],
   );
 
   // ---- Look gacha: reroll the seed ----
   const reroll = useCallback(() => {
-    update({ seed: randomSeed() });
-  }, [update]);
+    applyUpdate({ seed: randomSeed() });
+  }, [applyUpdate]);
 
   // ---- Reroll details, same topology: keep the exact operators (id/generatorId/
   // generatorVersion/order) that Semantic Synth currently has — and with them the
@@ -266,14 +283,14 @@ export function App(): React.ReactElement {
   // topology via the `seed` setting): `reroll` is the "new shape" gacha, this is the
   // "same shape, new details" one. Only meaningful on the semantic-synth scene, which
   // is the only scene with a VisualPatch (`currentPatch`) to reroll.
-  const rerollDetails = useCallback(() => {
+  const rerollDetails = useCallback((seed?: string) => {
     const control = getSynthControl();
     const current = control.getState().currentPatch;
     // No semantic-synth scene active (or it hasn't derived a patch yet) — nothing to
     // reroll. Backstops the disabled-button gating in ControlPanel for the moment
     // right after switching scenes, before the first frame has run.
     if (!current) return;
-    const next = rerollPatch(current, randomSeed(), { catalog: inlineCatalog });
+    const next = rerollPatch(current, seed ?? randomSeed(), { catalog: inlineCatalog });
     control.proposePatch(JSON.parse(serializePatch(next)) as unknown);
   }, []);
 
@@ -296,6 +313,7 @@ export function App(): React.ReactElement {
       sceneId: s.sceneId,
       hueMode: s.hueMode,
       fixedHue: s.fixedHue,
+      baseHue: rendererRef.current?.currentHue ?? s.fixedHue,
       background: s.background,
       seed: s.seed,
       autoCycle: s.autoCycle,
@@ -312,10 +330,10 @@ export function App(): React.ReactElement {
           reroll();
           return { ok: true, issues: [] };
         case 'seed:set':
-          update({ seed: command.seed });
+          applyUpdate({ seed: command.seed });
           return { ok: true, issues: [] };
         case 'patch:rerollDetails':
-          rerollDetails();
+          rerollDetails(command.seed);
           return { ok: true, issues: [] };
         case 'scene:set':
           if (!scenes.some((s) => s.id === command.sceneId)) {
@@ -327,13 +345,13 @@ export function App(): React.ReactElement {
           shiftScene(command.delta);
           return { ok: true, issues: [] };
         case 'hue:mode':
-          update({ hueMode: command.mode });
+          applyUpdate({ hueMode: command.mode });
           return { ok: true, issues: [] };
         case 'hue:fixed':
-          update({ hueMode: 'fixed', fixedHue: command.hue });
+          applyUpdate({ hueMode: 'fixed', fixedHue: command.hue });
           return { ok: true, issues: [] };
         case 'background:set':
-          update({ background: command.background });
+          applyUpdate({ background: command.background });
           return { ok: true, issues: [] };
         case 'tempo:tap':
           onTap();
@@ -347,11 +365,11 @@ export function App(): React.ReactElement {
         case 'timeline:lock':
           return { ok: false, issues: ['timeline:lock is handled by host'] };
         case 'autoCycle:set':
-          update({ autoCycle: command.on });
+          applyUpdate({ autoCycle: command.on });
           return { ok: true, issues: [] };
       }
     },
-    [reroll, update, rerollDetails, setScene, shiftScene, onTap, onTempoMultiply, onTempoAuto],
+    [reroll, applyUpdate, rerollDetails, setScene, shiftScene, onTap, onTempoMultiply, onTempoAuto],
   );
 
   const getAppStateRef = useRef(getAppState);

@@ -7,6 +7,7 @@ import { randomSeed } from '../variation/generate';
 import {
   dispatchDeckAction,
   keyToAction,
+  wrapHue,
   type DeckActionContext,
   type DeckKeyView,
 } from './actions';
@@ -117,6 +118,17 @@ function moveGridCursor(slot: number, code: string, size: number): number {
   return next >= size ? bounded : next;
 }
 
+/** Mirror 窓と seed を揃える。gacha / reroll は Deck 側で seed を決めて送る。 */
+function withSyncSeed(command: DeckCommand): DeckCommand {
+  if (command.kind === 'seed:gacha') {
+    return { kind: 'seed:set', seed: randomSeed() };
+  }
+  if (command.kind === 'patch:rerollDetails' && command.seed === undefined) {
+    return { kind: 'patch:rerollDetails', seed: randomSeed() };
+  }
+  return command;
+}
+
 function formatAutoStatus(
   autoOn: boolean,
   kind: AutoKind,
@@ -145,6 +157,7 @@ export function DeckApp(): React.ReactElement {
   const cursorRef = useRef(0);
   const pollMsRef = useRef(POLL_MS);
   const commandIdRef = useRef(0);
+  const lastErrorCmdIdRef = useRef<string | null>(null);
   const viewRef = useRef<DeckKeyView | null>(null);
   const ctxRef = useRef<DeckActionContext | null>(null);
   // host が最後に受理したスロット。楽観更新した playhead の巻き戻し先。
@@ -165,6 +178,7 @@ export function DeckApp(): React.ReactElement {
   const [autoBars, setAutoBars] = useState(AUTO_BARS_DEFAULT);
   const [thumbUrls, setThumbUrls] = useState<Array<string | null>>([]);
   const [hueEpoch, setHueEpoch] = useState(0);
+  const [hueEcho, setHueEcho] = useState<number | null>(null);
 
   bankRef.current = bank;
   sharedRef.current = shared;
@@ -301,8 +315,15 @@ export function DeckApp(): React.ReactElement {
         return;
       }
       if (parsed.kind === 'deck:commandResult') {
-        if (parsed.ok) setLastError(null);
-        else setLastError(parsed.issues.join(' · ') || 'rejected');
+        if (parsed.ok) {
+          if (lastErrorCmdIdRef.current === parsed.id) {
+            lastErrorCmdIdRef.current = null;
+            setLastError(null);
+          }
+        } else {
+          lastErrorCmdIdRef.current = parsed.id;
+          setLastError(parsed.issues.join(' · ') || 'rejected');
+        }
         return;
       }
       if (!parsed.ok) {
@@ -444,7 +465,7 @@ export function DeckApp(): React.ReactElement {
       postRequest({
         kind: 'deck:command',
         id: `cmd-${commandIdRef.current}`,
-        command,
+        command: withSyncSeed(command),
       });
     },
     [postRequest],
@@ -495,7 +516,7 @@ export function DeckApp(): React.ReactElement {
       ? {
           hueMode: app.hueMode,
           fixedHue: app.fixedHue,
-          hue: shared.hue ?? app.fixedHue,
+          hue: app.baseHue,
           background: app.background,
           autoCycle: app.autoCycle,
           locked: shared.nowSec < shared.lockedUntilSec,
@@ -525,11 +546,7 @@ export function DeckApp(): React.ReactElement {
   const baseChanged =
     connected && livePatch !== null && bank !== null && isBaseChanged(livePatch, bank, bankBase);
   const lockRemain = shared ? formatLockRemain(shared.nowSec, shared.lockedUntilSec) : null;
-  const hueSliderValue = app
-    ? app.hueMode === 'fixed'
-      ? app.fixedHue
-      : (shared?.hue ?? app.fixedHue)
-    : 0;
+  const hueSliderValue = app ? (app.hueMode === 'fixed' ? app.fixedHue : app.baseHue) : 0;
   const hueStatus =
     app?.hueMode === 'fixed'
       ? `${Math.round(app.fixedHue)}° fixed`
@@ -546,7 +563,8 @@ export function DeckApp(): React.ReactElement {
           <div className="deck-title">Scene Deck</div>
           <div className="deck-sub">
             1–8 ポン出し · Shift+数字 cut · ←↑↓→ カーソル · Shift+←→ シーン · Enter/Space 決定 · T
-            tap · X 遷移 · Q ガチャ · W 細部 · A auto · R 再生成 · G バンク
+            tap · , ÷2 · . ×2 · / AUTO · X 遷移 · Q ガチャ · W 細部 · A auto · Shift+A autocycle · R
+            再生成 · G バンク
           </div>
         </div>
         <div className="deck-toolbar">
@@ -621,7 +639,10 @@ export function DeckApp(): React.ReactElement {
           disabled={!consoleEnabled}
           value={app?.sceneId ?? ''}
           aria-label="Scene"
-          onChange={(e) => postCommand({ kind: 'scene:set', sceneId: e.target.value })}
+          onChange={(e) => {
+            postCommand({ kind: 'scene:set', sceneId: e.target.value });
+            e.currentTarget.blur();
+          }}
         >
           {app === undefined ? <option value="">scene</option> : null}
           {scenes.map((s) => (
@@ -648,7 +669,7 @@ export function DeckApp(): React.ReactElement {
             if (app.hueMode === 'fixed') {
               postCommand({ kind: 'hue:mode', mode: 'cycle' });
             } else {
-              postCommand({ kind: 'hue:fixed', hue: shared?.hue ?? app.fixedHue });
+              postCommand({ kind: 'hue:fixed', hue: wrapHue(app.baseHue) });
             }
           }}
         >
@@ -661,9 +682,21 @@ export function DeckApp(): React.ReactElement {
             max={360}
             step={1}
             disabled={!consoleEnabled}
-            value={hueSliderValue}
+            value={hueEcho ?? hueSliderValue}
             aria-label="Hue"
-            onChange={(e) => postCommand({ kind: 'hue:fixed', hue: Number(e.target.value) })}
+            onChange={(e) => {
+              const hue = Number(e.target.value);
+              setHueEcho(hue);
+              postCommand({ kind: 'hue:fixed', hue });
+            }}
+            onPointerUp={(e) => {
+              setHueEcho(null);
+              e.currentTarget.blur();
+            }}
+            onPointerCancel={(e) => {
+              setHueEcho(null);
+              e.currentTarget.blur();
+            }}
           />
         </label>
         <button
@@ -687,6 +720,45 @@ export function DeckApp(): React.ReactElement {
           onClick={() => postCommand({ kind: 'tempo:tap' })}
         >
           TAP
+        </button>
+        <button
+          type="button"
+          className="btn"
+          disabled={!consoleEnabled}
+          title="Halve tempo"
+          onClick={() => postCommand({ kind: 'tempo:multiply', factor: 0.5 })}
+        >
+          ÷2
+        </button>
+        <button
+          type="button"
+          className="btn"
+          disabled={!consoleEnabled}
+          title="Double tempo"
+          onClick={() => postCommand({ kind: 'tempo:multiply', factor: 2 })}
+        >
+          ×2
+        </button>
+        <button
+          type="button"
+          className="btn"
+          disabled={!consoleEnabled}
+          title="Auto-detect tempo"
+          onClick={() => postCommand({ kind: 'tempo:auto' })}
+        >
+          AUTO
+        </button>
+        <button
+          type="button"
+          className={`btn toggle${app?.autoCycle ? ' on' : ''}`}
+          disabled={!consoleEnabled}
+          title="Main window auto-cycle (Shift+A)"
+          onClick={() => {
+            if (!app) return;
+            postCommand({ kind: 'autoCycle:set', on: !app.autoCycle });
+          }}
+        >
+          autocycle
         </button>
         <button
           type="button"

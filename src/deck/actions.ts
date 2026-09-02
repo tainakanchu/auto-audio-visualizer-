@@ -22,7 +22,7 @@ export type DeckAction =
 export interface DeckKeyView {
   hueMode: 'cycle' | 'fixed';
   fixedHue: number;
-  /** レンダラの現在 hue。fixed に入るとき固定値にする。 */
+  /** レンダラの base hue（offset 未適用）。fixed に入るとき固定値にする。 */
   hue: number;
   background: 'black' | 'transparent';
   autoCycle: boolean;
@@ -49,7 +49,7 @@ const CURSOR_BY_CODE = {
   ArrowDown: 'down',
 } as const;
 
-function wrapHue(hue: number): number {
+export function wrapHue(hue: number): number {
   return ((hue % 360) + 360) % 360;
 }
 
@@ -85,10 +85,13 @@ export function keyToAction(e: KeyboardEvent, view?: DeckKeyView | null): DeckAc
     case 'KeyX':
       return { type: 'cycleTransition' };
     case 'Comma':
+      if (e.repeat) return null;
       return { type: 'command', command: { kind: 'tempo:multiply', factor: 0.5 } };
     case 'Period':
+      if (e.repeat) return null;
       return { type: 'command', command: { kind: 'tempo:multiply', factor: 2 } };
     case 'Slash':
+      if (e.repeat) return null;
       return { type: 'command', command: { kind: 'tempo:auto' } };
     case 'KeyQ':
       if (e.repeat) return null;

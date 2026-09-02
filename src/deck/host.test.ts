@@ -100,6 +100,7 @@ function sampleApp(overrides: Partial<DeckAppState> = {}): DeckAppState {
     sceneId: 'semantic-synth',
     hueMode: 'cycle',
     fixedHue: 200,
+    baseHue: 180,
     background: 'black',
     seed: 'neon-prism-001',
     autoCycle: false,
@@ -413,6 +414,27 @@ describe('initDeckHost', () => {
     expect(channel.closed).toBe(true);
     channel.onmessage?.({ data: { kind: 'deck:requestState' } } as MessageEvent);
     expect(channel.posted).toHaveLength(1);
+  });
+
+  it('posts commandResult when a deck:command handler throws', () => {
+    vi.stubGlobal('BroadcastChannel', FakeChannel);
+    const handlers = stubHandlers({
+      runCommand: vi.fn<RunCommand>(() => {
+        throw new Error('boom');
+      }),
+    });
+    const handle = initDeckHost(handlers);
+    const channel = FakeChannel.instances[0]!;
+    channel.onmessage?.({
+      data: { kind: 'deck:command', id: 'cmd-x', command: { kind: 'tempo:tap' } },
+    } as MessageEvent);
+    expect(channel.posted[0]).toEqual({
+      kind: 'deck:commandResult',
+      id: 'cmd-x',
+      ok: false,
+      issues: ['boom'],
+    });
+    handle?.close();
   });
 
   it('coalesces control notifications into one trailing deck:state and stops after close', () => {

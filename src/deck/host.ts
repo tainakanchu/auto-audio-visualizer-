@@ -163,6 +163,13 @@ function labelOf(msg: unknown): string {
   return typeof label === 'string' ? label : '';
 }
 
+function commandIdOf(msg: unknown): string | null {
+  if (typeof msg !== 'object' || msg === null) return null;
+  const rec = msg as { kind?: unknown; id?: unknown };
+  if (rec.kind !== 'deck:command' || typeof rec.id !== 'string') return null;
+  return rec.id;
+}
+
 function errorMessage(err: unknown): string {
   return err instanceof Error ? err.message : String(err);
 }
@@ -196,6 +203,16 @@ export function initDeckHost(handlers: DeckHostHandlers): { close(): void } | nu
       handleDeckRequest(ev.data, control, handlers, post);
     } catch (err) {
       // 想定外の throw でもデッキ窓を「待ち」のまま放置しない。
+      const commandId = commandIdOf(ev.data);
+      if (commandId !== null) {
+        post({
+          kind: 'deck:commandResult',
+          id: commandId,
+          ok: false,
+          issues: [errorMessage(err)],
+        });
+        return;
+      }
       const label = labelOf(ev.data);
       post({ kind: 'deck:result', ok: false, label, issues: [errorMessage(err)] });
     }

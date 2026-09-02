@@ -58,6 +58,7 @@ function sampleApp(overrides: Partial<DeckAppState> = {}): DeckAppState {
     sceneId: 'semantic-synth',
     hueMode: 'cycle',
     fixedHue: 200,
+    baseHue: 180,
     background: 'black',
     seed: 'neon-prism-001',
     autoCycle: false,
@@ -160,6 +161,7 @@ describe('parseDeckRequest', () => {
       { kind: 'seed:gacha' },
       { kind: 'seed:set', seed: 'neon-tiger-042' },
       { kind: 'patch:rerollDetails' },
+      { kind: 'patch:rerollDetails', seed: 'neon-tiger-042' },
       { kind: 'scene:set', sceneId: 'bars' },
       { kind: 'scene:shift', delta: 1 },
       { kind: 'scene:shift', delta: -1 },
@@ -205,6 +207,7 @@ describe('parseDeckRequest', () => {
     const bads: unknown[] = [
       { kind: 'seed:set' },
       { kind: 'seed:set', seed: 12 },
+      { kind: 'patch:rerollDetails', seed: 12 },
       { kind: 'scene:set' },
       { kind: 'scene:set', sceneId: 0 },
       { kind: 'scene:shift', delta: 0 },
@@ -410,6 +413,29 @@ describe('parseDeckResponse', () => {
     });
   });
 
+  it('defaults missing baseHue to fixedHue (legacy host)', () => {
+    const app = sampleApp();
+    const withoutBase = {
+      sceneId: app.sceneId,
+      hueMode: app.hueMode,
+      fixedHue: app.fixedHue,
+      background: app.background,
+      seed: app.seed,
+      autoCycle: app.autoCycle,
+      bpm: app.bpm,
+      tempoLocked: app.tempoLocked,
+      audioRunning: app.audioRunning,
+    };
+    const parsed = parseDeckResponse({
+      kind: 'deck:state',
+      state: { ...sampleState(), app: withoutBase },
+    } as unknown);
+    expect(parsed).not.toBeNull();
+    if (parsed?.kind === 'deck:state') {
+      expect(parsed.state.app?.baseHue).toBe(app.fixedHue);
+    }
+  });
+
   it('keeps app undefined when the field is missing (legacy host)', () => {
     const empty = sampleState();
     expect(empty.app).toBeUndefined();
@@ -427,6 +453,8 @@ describe('parseDeckResponse', () => {
       { ...sampleApp(), sceneId: 1 },
       { ...sampleApp(), hueMode: 'spin' },
       { ...sampleApp(), fixedHue: Number.NaN },
+      { ...sampleApp(), baseHue: Number.NaN },
+      { ...sampleApp(), baseHue: '180' },
       { ...sampleApp(), background: 'white' },
       { ...sampleApp(), seed: 3 },
       { ...sampleApp(), autoCycle: 1 },

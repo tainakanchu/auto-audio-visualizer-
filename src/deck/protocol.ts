@@ -16,7 +16,7 @@ export const DECK_CHANNEL = 'vj-deck-v1';
 export type DeckCommand =
   | { kind: 'seed:gacha' }
   | { kind: 'seed:set'; seed: string }
-  | { kind: 'patch:rerollDetails' }
+  | { kind: 'patch:rerollDetails'; seed?: string }
   | { kind: 'scene:set'; sceneId: string }
   | { kind: 'scene:shift'; delta: 1 | -1 }
   | { kind: 'hue:mode'; mode: 'cycle' | 'fixed' }
@@ -44,6 +44,11 @@ export interface DeckAppState {
   sceneId: string;
   hueMode: 'cycle' | 'fixed';
   fixedHue: number;
+  /**
+   * Renderer base hue (offset 未適用). H / [ ] / hue トグルの基準。
+   * `shared.hue` は offset 込みの表示用。
+   */
+  baseHue: number;
   background: 'black' | 'transparent';
   seed: string;
   autoCycle: boolean;
@@ -137,8 +142,11 @@ function parseDeckCommand(input: unknown): DeckCommand | null {
     case 'seed:set':
       if (typeof input.seed !== 'string') return null;
       return { kind: 'seed:set', seed: input.seed };
-    case 'patch:rerollDetails':
-      return { kind: 'patch:rerollDetails' };
+    case 'patch:rerollDetails': {
+      if (input.seed === undefined) return { kind: 'patch:rerollDetails' };
+      if (typeof input.seed !== 'string') return null;
+      return { kind: 'patch:rerollDetails', seed: input.seed };
+    }
     case 'scene:set':
       if (typeof input.sceneId !== 'string') return null;
       return { kind: 'scene:set', sceneId: input.sceneId };
@@ -224,6 +232,15 @@ function parseAppState(input: unknown): DeckAppState | null {
   if (typeof input.sceneId !== 'string') return null;
   if (input.hueMode !== 'cycle' && input.hueMode !== 'fixed') return null;
   if (!isFiniteNumber(input.fixedHue)) return null;
+  // 旧 host は baseHue を送らない。無いときは fixedHue に倒す。
+  let baseHue: number;
+  if (input.baseHue === undefined) {
+    baseHue = input.fixedHue;
+  } else if (!isFiniteNumber(input.baseHue)) {
+    return null;
+  } else {
+    baseHue = input.baseHue;
+  }
   if (input.background !== 'black' && input.background !== 'transparent') return null;
   if (typeof input.seed !== 'string') return null;
   if (typeof input.autoCycle !== 'boolean') return null;
@@ -234,6 +251,7 @@ function parseAppState(input: unknown): DeckAppState | null {
     sceneId: input.sceneId,
     hueMode: input.hueMode,
     fixedHue: input.fixedHue,
+    baseHue,
     background: input.background,
     seed: input.seed,
     autoCycle: input.autoCycle,

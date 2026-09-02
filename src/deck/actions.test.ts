@@ -122,6 +122,20 @@ describe('keyToAction', () => {
     });
   });
 
+  it('ignores key-repeat for tempo multiply/auto but allows hue sweep', () => {
+    expect(keyToAction(evt('Comma', { repeat: true }))).toBeNull();
+    expect(keyToAction(evt('Period', { repeat: true }))).toBeNull();
+    expect(keyToAction(evt('Slash', { repeat: true }))).toBeNull();
+    expect(keyToAction(evt('BracketRight', { repeat: true }), view)).toEqual({
+      type: 'command',
+      command: { kind: 'hue:fixed', hue: 228 },
+    });
+    expect(keyToAction(evt('BracketLeft', { repeat: true }), view)).toEqual({
+      type: 'command',
+      command: { kind: 'hue:fixed', hue: 198 },
+    });
+  });
+
   it('maps Shift+Arrow to scene:shift and does not also move the cursor', () => {
     expect(keyToAction(evt('ArrowLeft', { shiftKey: true }))).toEqual({
       type: 'command',
