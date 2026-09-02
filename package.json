@@ -21,7 +21,8 @@
     "format:check": "oxfmt --check",
     "test": "vitest run",
     "test:gpu": "vitest run gpu.test",
-    "test:watch": "vitest"
+    "test:watch": "vitest",
+    "knowledge:check": "node .claude/skills/okf/scripts/validate.mjs knowledge --tag-registry knowledge/tags.yml"
   },
   "dependencies": {
     "react": "^19.2.8",
@@ -43,7 +44,8 @@
     "vite": "^8.2.0",
     "vitest": "^4.1.10",
     "wrangler": "^4.119.0",
-    "ws": "^8.21.2"
+    "ws": "^8.21.2",
+    "yaml": "^2.9.0"
   },
   "packageManager": "pnpm@10.32.1",
   "pnpm": {
