@@ -4,7 +4,7 @@
  * 同トポロジ・同 seed のままパラメータだけを動かす。ポン出しが in-place morph
  * （シェーダ再コンパイル無し）で済むようにするため。
  */
-import { createCatalog } from '../synth/catalog';
+import { createCatalog, type GeneratorCatalog } from '../synth/catalog';
 import { MOTION_RATIO_MAX, MOTION_TARGET_PARAMS } from '../synth/derive';
 import { allGeneratorDefinitions } from '../synth/generators';
 import type { InlineGeneratorCatalog } from '../synth/generators/types';
@@ -13,6 +13,8 @@ import type { ParameterDefinition, VisualOperator, VisualPatch } from '../synth/
 import { validatePatch } from '../synth/validate';
 
 export const SCENE_BANK_SIZE = 8;
+
+export const DECK_META_CATALOG: GeneratorCatalog = createCatalog(allGeneratorDefinitions());
 
 export interface DeckScene {
   slot: number;
@@ -27,10 +29,9 @@ export function buildSceneBank(
   bankSeed: string,
   catalog: InlineGeneratorCatalog,
 ): DeckScene[] {
-  const metaCatalog = createCatalog(allGeneratorDefinitions());
   const scenes: DeckScene[] = [];
   for (let slot = 0; slot < SCENE_BANK_SIZE; slot++) {
-    scenes.push(buildScene(base, bankSeed, catalog, metaCatalog, slot));
+    scenes.push(buildScene(base, bankSeed, catalog, DECK_META_CATALOG, slot));
   }
   return scenes;
 }
@@ -39,7 +40,7 @@ function buildScene(
   base: VisualPatch,
   bankSeed: string,
   catalog: InlineGeneratorCatalog,
-  metaCatalog: ReturnType<typeof createCatalog>,
+  metaCatalog: GeneratorCatalog,
   slot: number,
 ): DeckScene {
   const label = slot === 0 ? 'BASE' : `V${slot}`;

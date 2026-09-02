@@ -14,8 +14,7 @@ import { resolveBlendMode } from './ui/blend';
 import { ControlPanel } from './ui/ControlPanel';
 import { resolveOverlaySceneId } from './ui/overlay';
 import { TimelinePanel } from './ui/TimelinePanel';
-import { useSettings } from './ui/useSettings';
-import type { Settings } from './ui/useSettings';
+import { sanitizeSettings, useSettings, type Settings } from './ui/useSettings';
 import { generateVariation, randomSeed } from './variation/generate';
 
 /** Milliseconds of mouse inactivity before the panel + cursor fade out. */
@@ -42,8 +41,6 @@ async function toggleFullscreen(): Promise<void> {
 export function App(): React.ReactElement {
   const { settings, update, initialUiHidden, initialOverlayRaw, initialBlendRaw } = useSettings();
 
-  // Deterministic visual variation derived from the seed; recomputed only when
-  // the seed string changes.
   const variation = useMemo(() => generateVariation(settings.seed), [settings.seed]);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -69,7 +66,7 @@ export function App(): React.ReactElement {
           ? Math.min(360, Math.max(0, hue))
           : settingsRef.current.fixedHue;
       }
-      settingsRef.current = { ...settingsRef.current, ...next };
+      settingsRef.current = sanitizeSettings({ ...settingsRef.current, ...next });
       update(next);
     },
     [update],

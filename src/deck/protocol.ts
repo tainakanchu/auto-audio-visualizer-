@@ -15,6 +15,7 @@ export const DECK_CHANNEL = 'vj-deck-v1';
 /** Deck → メイン窓の App レベル操作。Settings / AudioEngine / Timeline に触る。 */
 export type DeckCommand =
   | { kind: 'seed:gacha' }
+  /** Settings.seed のみ。画は変えない（derivePatch は seed:gacha）。 */
   | { kind: 'seed:set'; seed: string }
   | { kind: 'patch:rerollDetails'; seed?: string }
   | { kind: 'scene:set'; sceneId: string }

@@ -1,14 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { createCatalog } from '../synth/catalog';
 import { DEFAULT_BUDGETS, estimateCost, fitsBudget } from '../synth/cost';
 import { derivePatch, MOTION_RATIO_MAX, MOTION_TARGET_PARAMS } from '../synth/derive';
-import { allGeneratorDefinitions, inlineCatalog } from '../synth/generators';
+import { inlineCatalog } from '../synth/generators';
 import { serializePatch } from '../synth/schema';
 import type { ParameterDefinition, VisualPatch } from '../synth/types';
 import { validatePatch } from '../synth/validate';
-import { buildSceneBank, SCENE_BANK_SIZE } from './variations';
+import { buildSceneBank, DECK_META_CATALOG, SCENE_BANK_SIZE } from './variations';
 
-const metaCatalog = createCatalog(allGeneratorDefinitions());
+const metaCatalog = DECK_META_CATALOG;
 
 function kindsPatch(): VisualPatch {
   return {
