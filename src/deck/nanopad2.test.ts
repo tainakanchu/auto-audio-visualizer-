@@ -29,7 +29,7 @@ function bytes(...data: number[]): Uint8Array {
 
 function dumpSysex(unpacked: Uint8Array, globalCh = 0): Uint8Array {
   const packed = pack7bit(unpacked);
-  const len = packed.length + 1;
+  const num = packed.length + 1;
   return Uint8Array.from([
     0xf0,
     0x42,
@@ -39,10 +39,7 @@ function dumpSysex(unpacked: Uint8Array, globalCh = 0): Uint8Array {
     0x12,
     0x00,
     0x7f,
-    0x7f,
-    0x02,
-    (len >> 7) & 0x7f,
-    len & 0x7f,
+    num,
     0x40,
     ...packed,
     0xf7,
@@ -103,7 +100,28 @@ describe('parseNanopadSysex', () => {
     ).toEqual({ kind: 'modeData', native: false });
   });
 
-  it('parses Search Device Reply and Family ID 12 01', () => {
+  it('parses Search Device Reply per spec 1-4 (F0 42 50 01 0g dd 12 01 00 00 …)', () => {
+    expect(
+      parseNanopadSysex(
+        bytes(
+          0xf0,
+          0x42,
+          0x50,
+          0x01,
+          0x00,
+          0x2a,
+          0x12,
+          0x01,
+          0x00,
+          0x00,
+          0x00,
+          0x00,
+          0x00,
+          0x00,
+          0xf7,
+        ),
+      ),
+    ).toEqual({ kind: 'searchReply', globalCh: 0, echoId: 0x2a, isNanopad2: true });
     expect(
       parseNanopadSysex(
         bytes(
@@ -148,7 +166,20 @@ describe('unpack7bit', () => {
 });
 
 describe('scene dump → mapping', () => {
-  it('parses pad assign/note/ch from a packed dump', () => {
+  it('reads TABLE 1 byte 0 = 0x40 as Note and MIDI ch from byte 5', () => {
+    const unpacked = new Uint8Array(SCENE_DUMP_UNPACKED_BYTES);
+    unpacked[0] = 0x40;
+    unpacked[1] = 60;
+    unpacked[5] = 2;
+    unpacked[8 * 6] = 0x40;
+    unpacked[8 * 6 + 1] = 72;
+    unpacked[8 * 6 + 5] = 16;
+    const pads = parseSceneDumpPads(unpacked);
+    expect(pads[0]).toEqual({ assign: 'note', number: 60, ch: 2 });
+    expect(pads[8]).toEqual({ assign: 'note', number: 72, ch: 'global' });
+  });
+
+  it('parses spec dump F0 42 4g 00 01 12 00 7F 70 40 with 111 packed bytes', () => {
     const pads: NanopadPad[] = Array.from({ length: 16 }, (_, i) => ({
       assign: 'note',
       number: i < 8 ? 40 + i : 60 + (i - 8),
@@ -156,9 +187,19 @@ describe('scene dump → mapping', () => {
     }));
     const unpacked = buildSceneDumpUnpacked(pads);
     expect(unpacked.length).toBe(97);
+    expect(unpacked[0]).toBe(0x40);
+    expect(unpacked[5]).toBe(16);
     expect(parseSceneDumpPads(unpacked)).toEqual(pads);
 
-    const parsed = parseNanopadSysex(dumpSysex(unpacked, 0));
+    const packed = pack7bit(unpacked);
+    expect(packed.length).toBe(SCENE_DUMP_PACKED_BYTES);
+    const sysex = dumpSysex(unpacked, 0);
+    expect(sysex.subarray(0, 10)).toEqual(
+      bytes(0xf0, 0x42, 0x40, 0x00, 0x01, 0x12, 0x00, 0x7f, 0x70, 0x40),
+    );
+    expect(sysex.length).toBe(10 + SCENE_DUMP_PACKED_BYTES + 1);
+
+    const parsed = parseNanopadSysex(sysex);
     expect(parsed?.kind).toBe('sceneDump');
     if (parsed?.kind !== 'sceneDump') return;
     expect(parsed.pads).toEqual(pads);

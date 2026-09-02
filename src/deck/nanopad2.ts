@@ -114,19 +114,20 @@ export function parseNanopadSysex(data: Uint8Array): NanopadSysex | null {
 }
 
 /**
- * Unpacked Current Scene Dump（97 bytes）。
- * byte 0 は予約。pad 1..16 は offset 1 から 6 バイトずつ
- * [ch, assign, number, n2, n3, n4]。
- * ch 0–15 = MIDI ch、16 以上 = Global。
- * assign 0 none / 1 cc / 2 note / 3 pc。
+ * Unpacked Current Scene Dump（97 bytes）。16 pads × 6 bytes from offset 0.
+ * TABLE 1 per pad:
+ *   byte 0 Assign type in B7–5 (0 none / 1 cc / 2 note / 3 pc). Hardware Note = 0x40.
+ *   byte 1 Note# / CC# (first of up to 4)
+ *   bytes 2–4 extra Note/CC
+ *   byte 5 MIDI Channel 0–15 / 16 = Global
  */
 export function parseSceneDumpPads(unpacked: Uint8Array): NanopadPad[] {
   const pads: NanopadPad[] = [];
   for (let i = 0; i < 16; i++) {
-    const o = 1 + i * 6;
-    const chByte = unpacked[o] ?? 0;
-    const assignByte = unpacked[o + 1] ?? 0;
-    const number = unpacked[o + 2] ?? 0;
+    const o = i * 6;
+    const assignByte = ((unpacked[o] ?? 0) >> 5) & 0x07;
+    const number = unpacked[o + 1] ?? 0;
+    const chByte = unpacked[o + 5] ?? 0;
     pads.push({
       assign: ASSIGN[assignByte] ?? 'none',
       number: number & 0x7f,
@@ -140,11 +141,11 @@ export function buildSceneDumpUnpacked(pads: readonly NanopadPad[]): Uint8Array 
   const out = new Uint8Array(SCENE_DUMP_UNPACKED_BYTES);
   for (let i = 0; i < 16; i++) {
     const pad = pads[i] ?? { assign: 'none', number: 0, ch: 'global' };
-    const o = 1 + i * 6;
-    out[o] = pad.ch === 'global' ? 16 : pad.ch & 0x0f;
+    const o = i * 6;
     const assign = ASSIGN.indexOf(pad.assign);
-    out[o + 1] = assign < 0 ? 0 : assign;
-    out[o + 2] = pad.number & 0x7f;
+    out[o] = ((assign < 0 ? 0 : assign) & 0x07) << 5;
+    out[o + 1] = pad.number & 0x7f;
+    out[o + 5] = pad.ch === 'global' ? 16 : pad.ch & 0x0f;
   }
   return out;
 }
@@ -261,14 +262,17 @@ function parseModeData(data: Uint8Array): NanopadSysex | null {
 }
 
 function parseSceneDump(data: Uint8Array): NanopadSysex | null {
-  // F0 42 4g 00 01 12 00 7F … 40 [packed] F7
-  if (data.length < 10 || data[6] !== 0x00 || data[7] !== 0x7f) return null;
-  let i = 8;
-  if (data[i] === 0x7f && data[i + 1] === 0x02 && data.length > i + 4) {
-    i += 4;
+  // Spec 3-1 (7): F0 42 4g 00 01 12 00 7F 70 40 <111 packed> F7
+  // [7]=7F Variable, [8]=70 Num of Data (1+111), [9]=40 Func.
+  if (data.length < 11 || data[6] !== 0x00 || data[7] !== 0x7f) return null;
+  let packed: Uint8Array;
+  if (data[8] === 0x7f && data[9] === 0x02 && data.length >= 14 && data[12] === 0x40) {
+    packed = data.subarray(13, data.length - 1);
+  } else if (data[9] === 0x40) {
+    packed = data.subarray(10, data.length - 1);
+  } else {
+    return null;
   }
-  if (data[i] !== 0x40) return null;
-  const packed = data.slice(i + 1, data.length - 1);
   const unpacked = unpack7bit(packed);
   return { kind: 'sceneDump', pads: parseSceneDumpPads(unpacked) };
 }

@@ -364,6 +364,19 @@ describe('acceptLearnMessage', () => {
     );
     expect(other.bind).toEqual({ kind: 'cc', ch: 0, controller: 17, edge: 'value' });
   });
+
+  it('does not rebind a value-edge knob onto the next press-edge item', () => {
+    const first = acceptLearnMessage(pressCc(80), 'value', null);
+    expect(first.bind).toEqual({ kind: 'cc', ch: 0, controller: 16, edge: 'value' });
+    expect(acceptLearnMessage(pressCc(10), 'press', first.lastBound)).toEqual({
+      bind: null,
+      lastBound: first.lastBound,
+    });
+    expect(acceptLearnMessage(pressCc(90), 'press', first.lastBound)).toEqual({
+      bind: null,
+      lastBound: first.lastBound,
+    });
+  });
 });
 
 describe('parseMidiStorage', () => {

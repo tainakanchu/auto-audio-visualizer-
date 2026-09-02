@@ -236,7 +236,7 @@ export function useMidi(opts: {
   const pad1NoteRef = useRef(NANOPAD2_PAD1_NOTE);
   const postedCcRef = useRef(new Map<string, number>());
   const pendingCcRef = useRef(new Map<string, { value: number; action: DeckAction }>());
-  const rafRef = useRef<number | null>(null);
+  const flushTimerRef = useRef<number | null>(null);
   const blinkOnRef = useRef(true);
   const onMessageRef = useRef<(ev: { data?: Uint8Array | null }, inputId: string) => void>(
     () => {},
@@ -299,16 +299,16 @@ export function useMidi(opts: {
   const queueContinuous = useCallback((key: string, value: number, action: DeckAction): void => {
     if (postedCcRef.current.get(key) === value && !pendingCcRef.current.has(key)) return;
     pendingCcRef.current.set(key, { value, action });
-    if (rafRef.current !== null) return;
-    rafRef.current = window.requestAnimationFrame(() => {
-      rafRef.current = null;
+    if (flushTimerRef.current !== null) return;
+    flushTimerRef.current = window.setTimeout(() => {
+      flushTimerRef.current = null;
       for (const [pendingKey, pending] of pendingCcRef.current) {
         pendingCcRef.current.delete(pendingKey);
         if (postedCcRef.current.get(pendingKey) === pending.value) continue;
         postedCcRef.current.set(pendingKey, pending.value);
         dispatchRef.current(pending.action);
       }
-    });
+    }, 16);
   }, []);
 
   const applyGenerated = useCallback(
@@ -323,7 +323,7 @@ export function useMidi(opts: {
       commitMapping(mergeGenerated(mappingRef.current, generated));
       sourceRef.current = source;
       setDumpMapped(source === 'dump');
-      if (source === 'dump' && inputId) {
+      if (inputId) {
         pad1NoteRef.current = pad1Note;
         pad1InputIdRef.current = inputId;
         pad1ConfirmRef.current = true;
@@ -603,12 +603,14 @@ export function useMidi(opts: {
       sendNativeOut();
     };
     window.addEventListener('beforeunload', onUnload);
+    window.addEventListener('pagehide', onUnload);
     return () => {
       mountedRef.current = false;
       window.removeEventListener('beforeunload', onUnload);
+      window.removeEventListener('pagehide', onUnload);
       sendNativeOut();
       detach();
-      if (rafRef.current !== null) window.cancelAnimationFrame(rafRef.current);
+      if (flushTimerRef.current !== null) window.clearTimeout(flushTimerRef.current);
     };
   }, [detach, sendNativeOut]);
 

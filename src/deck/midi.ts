@@ -199,7 +199,9 @@ export function acceptLearnMessage(
 ): LearnAccept {
   const identity = triggerIdentity(msg);
   if (lastBound && identity && triggersOverlap(lastBound, identity)) {
-    if (ccEdge === 'value') return { bind: null, lastBound };
+    if (lastBound.kind === 'cc' && lastBound.edge === 'value') {
+      return { bind: null, lastBound };
+    }
     return { bind: null, lastBound: isMidiRelease(msg) ? null : lastBound };
   }
   if (msg.kind === 'noteOff' || msg.kind === 'sysex') {
