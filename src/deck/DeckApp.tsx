@@ -14,6 +14,7 @@ import {
   type AutoMode,
   type AutoOrder,
 } from './autoAdvance';
+import { circularHueDelta } from './hue';
 import {
   DECK_CHANNEL,
   parseDeckResponse,
@@ -54,12 +55,6 @@ async function toggleFullscreen(): Promise<void> {
 function nextPreset(current: TransitionPresetId): TransitionPresetId {
   const idx = PRESET_CYCLE.indexOf(current);
   return PRESET_CYCLE[(idx + 1) % PRESET_CYCLE.length]!;
-}
-
-/** 円環上の最短距離（度）。359→1 は 2。 */
-function circularHueDelta(from: number, to: number): number {
-  const d = Math.abs(to - from) % 360;
-  return d > 180 ? 360 - d : d;
 }
 
 function chipHue(patch: VisualPatch): number {
@@ -137,6 +132,8 @@ export function DeckApp(): React.ReactElement {
   const thumbsRef = useRef<ThumbRenderer | null>(null);
   const hueRef = useRef(0);
   const lastThumbHueRef = useRef<number | null>(null);
+  const thumbUrlsRef = useRef<Array<string | null>>([]);
+  const thumbBankRef = useRef<DeckScene[] | null>(null);
   const cursorRef = useRef(0);
   const pollMsRef = useRef(POLL_MS);
   // host が最後に受理したスロット。楽観更新した playhead の巻き戻し先。
@@ -376,28 +373,47 @@ export function DeckApp(): React.ReactElement {
   }, [shared?.hue]);
 
   // サムネは 1 枚/フレーム。コンパイルが UI を止めないようにする。
+  // hue だけの描き直しでは直前の画像を残し、bank が変わったときだけチップに戻す。
   useEffect(() => {
     if (!bank) {
+      thumbUrlsRef.current = [];
+      thumbBankRef.current = null;
       setThumbUrls([]);
       return;
     }
     let cancelled = false;
     let i = 0;
-    const urls: Array<string | null> = Array.from({ length: bank.length }, () => null);
-    setThumbUrls(urls.slice());
-    lastThumbHueRef.current = hueRef.current;
+    let raf = 0;
+    const passHue = hueRef.current;
+    lastThumbHueRef.current = passHue;
+
+    const sameBank = thumbBankRef.current === bank && thumbUrlsRef.current.length === bank.length;
+    thumbBankRef.current = bank;
+    const urls: Array<string | null> = sameBank
+      ? thumbUrlsRef.current.slice()
+      : Array.from({ length: bank.length }, () => null);
+    if (!sameBank) {
+      thumbUrlsRef.current = urls.slice();
+      setThumbUrls(urls.slice());
+    }
 
     const tick = (): void => {
       if (cancelled) return;
       const renderer = thumbsRef.current;
+      if (!renderer) {
+        raf = window.requestAnimationFrame(tick);
+        return;
+      }
       const scene = bank[i];
-      if (!renderer || !scene) return;
-      urls[i] = renderer.render(scene.patch, { hue: hueRef.current });
-      setThumbUrls(urls.slice());
+      if (!scene) return;
+      urls[i] = renderer.render(scene.patch, { hue: passHue });
+      const snapshot = urls.slice();
+      thumbUrlsRef.current = snapshot;
+      setThumbUrls(snapshot);
       i += 1;
-      if (i < bank.length) window.requestAnimationFrame(tick);
+      if (i < bank.length) raf = window.requestAnimationFrame(tick);
     };
-    const raf = window.requestAnimationFrame(tick);
+    raf = window.requestAnimationFrame(tick);
     return () => {
       cancelled = true;
       window.cancelAnimationFrame(raf);
@@ -540,7 +556,7 @@ export function DeckApp(): React.ReactElement {
           conn <strong>{connected ? 'live' : missingHost ? 'missing' : 'waiting'}</strong>
         </span>
         <span>
-          hue <strong>{`${Math.round(shared?.hue ?? 0)}°`}</strong>
+          hue <strong>{shared?.hue === undefined ? '—' : `${Math.round(shared.hue)}°`}</strong>
         </span>
         <span>
           t <strong>{shared ? `${shared.nowSec.toFixed(1)}s` : '—'}</strong>

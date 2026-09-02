@@ -222,10 +222,24 @@ describe('parseDeckResponse', () => {
   it('keeps hue undefined when the field is missing (legacy host)', () => {
     const empty = sampleState();
     expect(empty.hue).toBeUndefined();
+    expect('hue' in empty).toBe(false);
     const parsed = parseDeckResponse({ kind: 'deck:state', state: empty });
     expect(parsed).toEqual({ kind: 'deck:state', state: empty });
     if (parsed?.kind === 'deck:state') {
       expect(parsed.state.hue).toBeUndefined();
+      expect('hue' in parsed.state).toBe(false);
+    }
+  });
+
+  it('omits hue when the input has explicit hue: undefined', () => {
+    const parsed = parseDeckResponse({
+      kind: 'deck:state',
+      state: { ...sampleState(), hue: undefined },
+    });
+    expect(parsed).not.toBeNull();
+    if (parsed?.kind === 'deck:state') {
+      expect(parsed.state.hue).toBeUndefined();
+      expect('hue' in parsed.state).toBe(false);
     }
   });
 
