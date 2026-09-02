@@ -66,6 +66,12 @@ export function nextVisualSeed(
   return settingsSeed;
 }
 
+/** settings.seed が adopted から外れたらクリア（同じ seed をパネルから戻せる）。 */
+export function nextAdoptedSeed(settingsSeed: string, adoptedSeed: string | null): string | null {
+  if (adoptedSeed === null || adoptedSeed === settingsSeed) return adoptedSeed;
+  return null;
+}
+
 /**
  * Build a {@link Variation} deterministically from a seed string.
  *

@@ -5,7 +5,6 @@ import { openSceneDeck } from './deck/openDeck';
 import type { DeckAppState, DeckCommand } from './deck/protocol';
 import { Renderer } from './render/Renderer';
 import { scenes, sceneByIndex, sceneIndexById } from './scenes';
-import { adoptVaSeed } from './scenes/semanticSynth';
 import { initBridgeClient } from './synth/bridgeClient';
 import { getSynthControl } from './synth/control';
 import { rerollPatch } from './synth/derive';
@@ -17,7 +16,12 @@ import { resolveOverlaySceneId } from './ui/overlay';
 import { TimelinePanel } from './ui/TimelinePanel';
 import { sanitizeSeed, useSettings } from './ui/useSettings';
 import type { Settings } from './ui/useSettings';
-import { generateVariation, nextVisualSeed, randomSeed } from './variation/generate';
+import {
+  generateVariation,
+  nextAdoptedSeed,
+  nextVisualSeed,
+  randomSeed,
+} from './variation/generate';
 
 /** Milliseconds of mouse inactivity before the panel + cursor fade out. */
 const IDLE_TIMEOUT_MS = 3000;
@@ -49,6 +53,7 @@ export function App(): React.ReactElement {
   const variation = useMemo(() => generateVariation(visualSeed), [visualSeed]);
 
   useEffect(() => {
+    adoptedSeedRef.current = nextAdoptedSeed(settings.seed, adoptedSeedRef.current);
     setVisualSeed((cur) => nextVisualSeed(cur, settings.seed, adoptedSeedRef.current));
   }, [settings.seed]);
 
