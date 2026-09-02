@@ -8,7 +8,7 @@ import {
   type MidiMapping,
   type MidiTrigger,
 } from './midi';
-import { NANOPAD2_FACTORY_SCENE1, NANOPAD2_PAD1_NOTE } from './midiPresets';
+import { NANOPAD2_NATIVE_MAPPING, NANOPAD2_PAD1_NOTE } from './nanopad2';
 
 function bytes(...data: number[]): Uint8Array {
   return new Uint8Array(data);
@@ -83,7 +83,9 @@ describe('resolveMidiBinding', () => {
         },
       ],
     });
-    expect(resolveMidiBinding({ kind: 'noteOn', ch: 3, note: 60, velocity: 40 }, mapping)).toEqual({
+    expect(
+      resolveMidiBinding({ kind: 'noteOn', ch: 3, note: 60, velocity: 40 }, mapping)?.action,
+    ).toEqual({
       type: 'trigger',
       slot: 0,
     });
@@ -102,17 +104,19 @@ describe('resolveMidiBinding', () => {
         },
       ],
     });
-    expect(resolveMidiBinding({ kind: 'noteOn', ch: 0, note: 36, velocity: 99 }, mapping)).toEqual({
+    expect(
+      resolveMidiBinding({ kind: 'noteOn', ch: 0, note: 36, velocity: 99 }, mapping)?.action,
+    ).toEqual({
       type: 'trigger',
       slot: 2,
     });
-    expect(resolveMidiBinding({ kind: 'noteOn', ch: 0, note: 36, velocity: 100 }, mapping)).toEqual(
-      {
-        type: 'trigger',
-        slot: 2,
-        cut: true,
-      },
-    );
+    expect(
+      resolveMidiBinding({ kind: 'noteOn', ch: 0, note: 36, velocity: 100 }, mapping)?.action,
+    ).toEqual({
+      type: 'trigger',
+      slot: 2,
+      cut: true,
+    });
   });
 
   it('returns null when nothing matches', () => {
@@ -145,11 +149,15 @@ describe('resolveMidiBinding', () => {
     expect(
       resolveMidiBinding({ kind: 'cc', ch: 0, controller: 16, value: 63 }, mapping),
     ).toBeNull();
-    expect(resolveMidiBinding({ kind: 'cc', ch: 5, controller: 16, value: 64 }, mapping)).toEqual({
+    expect(
+      resolveMidiBinding({ kind: 'cc', ch: 5, controller: 16, value: 64 }, mapping)?.action,
+    ).toEqual({
       type: 'command',
       command: { kind: 'tempo:tap' },
     });
-    expect(resolveMidiBinding({ kind: 'cc', ch: 5, controller: 16, value: 127 }, mapping)).toEqual({
+    expect(
+      resolveMidiBinding({ kind: 'cc', ch: 5, controller: 16, value: 127 }, mapping)?.action,
+    ).toEqual({
       type: 'command',
       command: { kind: 'tempo:tap' },
     });
@@ -164,20 +172,24 @@ describe('resolveMidiBinding', () => {
         },
       ],
     });
-    expect(resolveMidiBinding({ kind: 'cc', ch: 0, controller: 10, value: 0 }, interval)).toEqual({
+    expect(
+      resolveMidiBinding({ kind: 'cc', ch: 0, controller: 10, value: 0 }, interval)?.action,
+    ).toEqual({
       type: 'auto.intervalAbs',
       value01: 0,
     });
-    expect(resolveMidiBinding({ kind: 'cc', ch: 0, controller: 10, value: 64 }, interval)).toEqual({
+    expect(
+      resolveMidiBinding({ kind: 'cc', ch: 0, controller: 10, value: 64 }, interval)?.action,
+    ).toEqual({
       type: 'auto.intervalAbs',
       value01: 64 / 127,
     });
-    expect(resolveMidiBinding({ kind: 'cc', ch: 0, controller: 10, value: 127 }, interval)).toEqual(
-      {
-        type: 'auto.intervalAbs',
-        value01: 1,
-      },
-    );
+    expect(
+      resolveMidiBinding({ kind: 'cc', ch: 0, controller: 10, value: 127 }, interval)?.action,
+    ).toEqual({
+      type: 'auto.intervalAbs',
+      value01: 1,
+    });
 
     const hue = tapMapping({
       bindings: [
@@ -187,13 +199,60 @@ describe('resolveMidiBinding', () => {
         },
       ],
     });
-    expect(resolveMidiBinding({ kind: 'cc', ch: 0, controller: 9, value: 0 }, hue)).toEqual({
-      type: 'command',
-      command: { kind: 'hue:fixed', hue: 0 },
-    });
-    expect(resolveMidiBinding({ kind: 'cc', ch: 0, controller: 9, value: 127 }, hue)).toEqual({
+    expect(resolveMidiBinding({ kind: 'cc', ch: 0, controller: 9, value: 0 }, hue)?.action).toEqual(
+      {
+        type: 'command',
+        command: { kind: 'hue:fixed', hue: 0 },
+      },
+    );
+    expect(
+      resolveMidiBinding({ kind: 'cc', ch: 0, controller: 9, value: 127 }, hue)?.action,
+    ).toEqual({
       type: 'command',
       command: { kind: 'hue:fixed', hue: 360 },
+    });
+  });
+
+  it('uses trigger.edge for continuous vs press, not the action type', () => {
+    const mapping = tapMapping({
+      bindings: [
+        {
+          trigger: { kind: 'cc', ch: 0, controller: 1, edge: 'value' },
+          action: { type: 'trigger', slot: 0 },
+        },
+      ],
+    });
+    expect(
+      resolveMidiBinding({ kind: 'cc', ch: 0, controller: 1, value: 10 }, mapping)?.action,
+    ).toEqual({ type: 'trigger', slot: 0 });
+    expect(
+      resolveMidiBinding({ kind: 'cc', ch: 0, controller: 1, value: 10 }, mapping)?.binding.trigger,
+    ).toEqual({
+      kind: 'cc',
+      ch: 0,
+      controller: 1,
+      edge: 'value',
+    });
+  });
+
+  it('continues past a non-firing press to a later binding', () => {
+    const mapping = tapMapping({
+      bindings: [
+        {
+          trigger: { kind: 'cc', ch: 0, controller: 16, edge: 'press' },
+          action: { type: 'bank.rebuild' },
+        },
+        {
+          trigger: { kind: 'cc', ch: 0, controller: 16, edge: 'value' },
+          action: { type: 'auto.intervalAbs', value01: 0 },
+        },
+      ],
+    });
+    expect(
+      resolveMidiBinding({ kind: 'cc', ch: 0, controller: 16, value: 10 }, mapping)?.action,
+    ).toEqual({
+      type: 'auto.intervalAbs',
+      value01: 10 / 127,
     });
   });
 });
@@ -218,7 +277,7 @@ describe('parseMidiMapping', () => {
     ).toBeNull();
   });
 
-  it('accepts a valid mapping and the nanoPAD2 preset', () => {
+  it('accepts a valid mapping and the nanoPAD2 native map', () => {
     const parsed = parseMidiMapping({
       version: 1,
       name: 'ok',
@@ -241,19 +300,15 @@ describe('parseMidiMapping', () => {
         },
       ],
     });
-    expect(parseMidiMapping(NANOPAD2_FACTORY_SCENE1)).toEqual(NANOPAD2_FACTORY_SCENE1);
-    expect(NANOPAD2_PAD1_NOTE).toBe(36);
+    expect(parseMidiMapping(NANOPAD2_NATIVE_MAPPING)).toEqual(NANOPAD2_NATIVE_MAPPING);
+    expect(NANOPAD2_PAD1_NOTE).toBe(64);
     expect(
-      resolveMidiBinding(
-        { kind: 'noteOn', ch: 0, note: 37, velocity: 40 },
-        NANOPAD2_FACTORY_SCENE1,
-      ),
+      resolveMidiBinding({ kind: 'noteOn', ch: 1, note: 72, velocity: 40 }, NANOPAD2_NATIVE_MAPPING)
+        ?.action,
     ).toEqual({ type: 'trigger', slot: 0 });
     expect(
-      resolveMidiBinding(
-        { kind: 'noteOn', ch: 0, note: 36, velocity: 40 },
-        NANOPAD2_FACTORY_SCENE1,
-      ),
+      resolveMidiBinding({ kind: 'noteOn', ch: 1, note: 64, velocity: 40 }, NANOPAD2_NATIVE_MAPPING)
+        ?.action,
     ).toEqual({ type: 'trigger', slot: 0, cut: true });
   });
 });
@@ -291,7 +346,7 @@ describe('acceptLearnMessage', () => {
     expect(release).toEqual({ bind: null, lastBound: null });
   });
 
-  it('ignores a value-edge knob stream until a different trigger or a release', () => {
+  it('latches a value-edge knob until a different controller/note arrives', () => {
     const first = acceptLearnMessage(pressCc(80), 'value', null);
     expect(first.bind).toEqual({ kind: 'cc', ch: 0, controller: 16, edge: 'value' });
     expect(acceptLearnMessage(pressCc(90), 'value', first.lastBound)).toEqual({
@@ -300,7 +355,7 @@ describe('acceptLearnMessage', () => {
     });
     expect(acceptLearnMessage(pressCc(10), 'value', first.lastBound)).toEqual({
       bind: null,
-      lastBound: null,
+      lastBound: first.lastBound,
     });
     const other = acceptLearnMessage(
       { kind: 'cc', ch: 0, controller: 17, value: 40 },
@@ -312,10 +367,20 @@ describe('acceptLearnMessage', () => {
 });
 
 describe('parseMidiStorage', () => {
-  it('reads activeMapping and autoApplyPreset', () => {
+  it('reads activeMapping and nanopad prefs', () => {
+    expect(
+      parseMidiStorage({ activeMapping: null, nanopad: { preferNative: false, swapRows: true } }),
+    ).toEqual({
+      activeMapping: null,
+      nanopad: { preferNative: false, swapRows: true },
+    });
+    expect(parseMidiStorage({ activeMapping: null })).toEqual({
+      activeMapping: null,
+      nanopad: { preferNative: true, swapRows: false },
+    });
     expect(parseMidiStorage({ autoApplyPreset: true, activeMapping: null })).toEqual({
       activeMapping: null,
-      autoApplyPreset: true,
+      nanopad: { preferNative: true, swapRows: false },
     });
     expect(parseMidiStorage('nope')).toBeNull();
   });

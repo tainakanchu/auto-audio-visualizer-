@@ -178,7 +178,6 @@ export function DeckApp(): React.ReactElement {
     const ctx = ctxRef.current;
     if (ctx) dispatchDeckAction(action, ctx);
   }, []);
-  const midi = useMidi({ dispatch: midiDispatch });
   const [midiImport, setMidiImport] = useState('');
 
   const [shared, setShared] = useState<DeckSharedState | null>(null);
@@ -205,6 +204,16 @@ export function DeckApp(): React.ReactElement {
   pollMsRef.current = autoOn && autoKind === 'bars' ? POLL_BARS_MS : POLL_MS;
   hueRef.current = shared?.hue ?? 0;
 
+  const connected = shared !== null;
+  const midi = useMidi({
+    dispatch: midiDispatch,
+    leds: {
+      conn: connected,
+      auto: autoOn,
+      tempoLock: shared?.tempoLocked ?? false,
+    },
+  });
+
   const postRequest = useCallback((req: DeckRequest): void => {
     channelRef.current?.postMessage(req);
   }, []);
@@ -222,7 +231,6 @@ export function DeckApp(): React.ReactElement {
     [postRequest],
   );
 
-  const connected = shared !== null;
   const autoMode: AutoMode = autoOn ? autoKind : 'off';
 
   const onAdvance = useCallback(
@@ -679,12 +687,56 @@ export function DeckApp(): React.ReactElement {
             <span className="deck-midi-unsupported">MIDI 非対応</span>
           ) : (
             <>
+              {midi.native ? <span className="deck-midi-badge">native</span> : null}
+              {midi.dumpMapped && !midi.native ? (
+                <span className="deck-midi-badge">dump</span>
+              ) : null}
+              {midi.status === 'on' && !midi.sysex ? (
+                <span className="deck-midi-unsupported">SysEx なし</span>
+              ) : null}
               <label className="deck-midi-name">
                 <input
                   type="text"
                   value={midi.mapping.name}
                   onChange={(e) => midi.setMappingName(e.target.value)}
                   aria-label="MIDI mapping name"
+                />
+              </label>
+              <label className="deck-midi-check">
+                <input
+                  type="checkbox"
+                  checked={midi.preferNative}
+                  onChange={(e) => midi.setPreferNative(e.target.checked)}
+                />
+                Native
+              </label>
+              <label className="deck-midi-check">
+                <input
+                  type="checkbox"
+                  checked={midi.swapRows}
+                  onChange={(e) => midi.setSwapRows(e.target.checked)}
+                />
+                上下入替
+              </label>
+              <label className="deck-midi-cut">
+                cut ≥
+                <input
+                  type="number"
+                  min={1}
+                  max={127}
+                  placeholder="off"
+                  value={midi.velocityCutThreshold ?? ''}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    if (raw === '') {
+                      midi.setVelocityCutThreshold(null);
+                      return;
+                    }
+                    const n = Number(raw);
+                    if (!Number.isInteger(n)) return;
+                    midi.setVelocityCutThreshold(Math.min(127, Math.max(1, n)));
+                  }}
+                  aria-label="Velocity cut threshold"
                 />
               </label>
               <button type="button" className="btn" onClick={() => void midi.exportToClipboard()}>
@@ -940,6 +992,7 @@ export function DeckApp(): React.ReactElement {
           midi{' '}
           <strong>
             {midi.status === 'on' ? 'on' : midi.status === 'unsupported' ? 'n/a' : 'off'}
+            {midi.native ? ' · native' : midi.dumpMapped ? ' · dump' : ''}
             {midi.learning ? ' · learn' : ''}
           </strong>
         </span>
@@ -951,14 +1004,6 @@ export function DeckApp(): React.ReactElement {
         <div className="deck-banner warn">bars オートは tempo LOCK が必要です — 待機中</div>
       ) : null}
       {lastError ? <div className="deck-banner warn">{lastError}</div> : null}
-      {midi.nanopadOffer ? (
-        <div className="deck-banner">
-          nanoPAD2 を検出。工場 Scene 1 プリセットを適用しますか？
-          <button type="button" className="btn" onClick={midi.applyNanopadPreset}>
-            適用
-          </button>
-        </div>
-      ) : null}
       {midi.pad1Confirm ? <div className="deck-banner">pad 1 を叩いて確認してください</div> : null}
       {midi.mismatch ? (
         <div className="deck-banner warn">
@@ -970,6 +1015,7 @@ export function DeckApp(): React.ReactElement {
       ) : null}
       {midi.learnWarning ? <div className="deck-banner warn">{midi.learnWarning}</div> : null}
       {midi.importError ? <div className="deck-banner warn">{midi.importError}</div> : null}
+      {midi.exportError ? <div className="deck-banner warn">{midi.exportError}</div> : null}
 
       {bank ? (
         <div className="deck-grid">

@@ -879,6 +879,43 @@ html.deck-mode #root {
   color: hsl(32, 90%, 72%);
 }
 
+.deck-midi-badge {
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  padding: 3px 8px;
+  border-radius: 999px;
+  border: 1px solid rgba(120, 195, 255, 0.45);
+  color: rgba(180, 220, 255, 0.92);
+}
+
+.deck-midi-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--panel-fg-dim);
+}
+
+.deck-midi-cut {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--panel-fg-dim);
+}
+
+.deck-midi-cut input {
+  width: 64px;
+  appearance: none;
+  border: 1px solid var(--panel-border);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--panel-fg);
+  border-radius: 10px;
+  padding: 7px 9px;
+  font-size: 13px;
+}
+
 .deck-midi-name input {
   width: 160px;
   appearance: none;

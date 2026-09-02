@@ -30,9 +30,24 @@ export interface MidiMapping {
   bindings: MidiBinding[];
 }
 
+export interface MidiNanopadPrefs {
+  preferNative: boolean;
+  swapRows: boolean;
+}
+
+export const DEFAULT_NANOPAD_PREFS: MidiNanopadPrefs = {
+  preferNative: true,
+  swapRows: false,
+};
+
 export interface MidiStorage {
   activeMapping: MidiMapping | null;
-  autoApplyPreset: boolean;
+  nanopad: MidiNanopadPrefs;
+}
+
+export interface MidiHit {
+  action: DeckAction;
+  binding: MidiBinding;
 }
 
 export interface MidiLearnItem {
@@ -81,19 +96,22 @@ export function ccValueToHue(value: number): number {
 /**
  * 先頭一致。ch 'any' は全チャンネル。CC press は value>=64 で発火
  * （ヒステリシスは純関数側では持たない）。edge value は 0..127 を
- * auto.intervalAbs / hue:fixed へ写す。
+ * auto.intervalAbs / hue:fixed へ写す。連続 vs 押下は binding.trigger.edge。
+ * 最初の press が value<64 なら後続の binding を続ける。
  */
-export function resolveMidiBinding(msg: MidiMessage, mapping: MidiMapping): DeckAction | null {
+export function resolveMidiBinding(msg: MidiMessage, mapping: MidiMapping): MidiHit | null {
   for (const binding of mapping.bindings) {
     if (!triggerMatches(binding.trigger, msg)) continue;
-    if (msg.kind === 'noteOn') return applyVelocityCut(binding, msg.velocity);
+    if (msg.kind === 'noteOn') {
+      return { action: applyVelocityCut(binding, msg.velocity), binding };
+    }
     if (msg.kind === 'cc' && binding.trigger.kind === 'cc') {
       if (binding.trigger.edge === 'press') {
-        return msg.value >= 64 ? binding.action : null;
+        if (msg.value >= 64) return { action: binding.action, binding };
+        continue;
       }
-      return applyCcValue(binding.action, msg.value);
+      return { action: applyCcValue(binding.action, msg.value), binding };
     }
-    return null;
   }
   return null;
 }
@@ -114,13 +132,21 @@ export function parseMidiMapping(input: unknown): MidiMapping | null {
 
 export function parseMidiStorage(input: unknown): MidiStorage | null {
   if (!isRecord(input)) return null;
-  const autoApplyPreset = input.autoApplyPreset === true;
+  const nanopad = parseNanopadPrefs(input.nanopad);
   if (input.activeMapping === undefined || input.activeMapping === null) {
-    return { activeMapping: null, autoApplyPreset };
+    return { activeMapping: null, nanopad };
   }
   const mapping = parseMidiMapping(input.activeMapping);
-  if (mapping === null) return { activeMapping: null, autoApplyPreset };
-  return { activeMapping: mapping, autoApplyPreset };
+  if (mapping === null) return { activeMapping: null, nanopad };
+  return { activeMapping: mapping, nanopad };
+}
+
+export function parseNanopadPrefs(input: unknown): MidiNanopadPrefs {
+  if (!isRecord(input)) return { ...DEFAULT_NANOPAD_PREFS };
+  return {
+    preferNative: input.preferNative !== false,
+    swapRows: input.swapRows === true,
+  };
 }
 
 export function triggersOverlap(a: MidiTrigger, b: MidiTrigger): boolean {
@@ -164,7 +190,7 @@ export type LearnAccept =
 
 /**
  * learn 1 メッセージ。press の CC value<64 は無視。直前と同じ trigger は
- * 別 trigger か release まで無視（ボタン離し / ノブ連打で次の action を食わない）。
+ * 別 trigger が来るまで無視。value-edge は CC value<64 を release 扱いしない。
  */
 export function acceptLearnMessage(
   msg: MidiMessage,
@@ -173,6 +199,7 @@ export function acceptLearnMessage(
 ): LearnAccept {
   const identity = triggerIdentity(msg);
   if (lastBound && identity && triggersOverlap(lastBound, identity)) {
+    if (ccEdge === 'value') return { bind: null, lastBound };
     return { bind: null, lastBound: isMidiRelease(msg) ? null : lastBound };
   }
   if (msg.kind === 'noteOff' || msg.kind === 'sysex') {
@@ -184,6 +211,31 @@ export function acceptLearnMessage(
   const trigger = triggerFromMessage(msg, ccEdge);
   if (trigger === null) return { bind: null, lastBound };
   return { bind: trigger, lastBound: trigger };
+}
+
+export function withVelocityCutThreshold(
+  mapping: MidiMapping,
+  threshold: number | null,
+): MidiMapping {
+  const bindings = mapping.bindings.map((binding) => {
+    if (binding.action.type !== 'trigger' || binding.action.cut === true) {
+      return binding;
+    }
+    if (threshold === null) {
+      return { trigger: binding.trigger, action: binding.action };
+    }
+    return { ...binding, velocityCutThreshold: threshold };
+  });
+  return { ...mapping, bindings };
+}
+
+export function mappingVelocityCutThreshold(mapping: MidiMapping): number | null {
+  for (const binding of mapping.bindings) {
+    if (binding.action.type === 'trigger' && binding.action.cut !== true) {
+      return typeof binding.velocityCutThreshold === 'number' ? binding.velocityCutThreshold : null;
+    }
+  }
+  return null;
 }
 
 export function upsertMidiBinding(

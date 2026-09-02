@@ -200,7 +200,7 @@ Resolume のシーン一覧のように、**別窓で 8 スロットのバリエ
 
 ### MIDI
 
-Scene Deck 窓だけで Web MIDI を受けます（メイン窓には載せません）。Deck が背面でも効きます。
+Scene Deck 窓だけで Web MIDI を受けます（メイン窓には載せません）。**Deck が背面・非フォーカスでも効きます**（Web MIDI はフォーカス不要）。
 
 - **Chrome / Edge**: 標準対応
 - **Firefox**: Web MIDI 用の site permission add-on が必要（108+）
@@ -208,12 +208,25 @@ Scene Deck 窓だけで Web MIDI を受けます（メイン窓には載せま�
 
 使い方:
 
-1. Deck の MIDI パネルで **MIDI** を押して権限を許可する（ユーザー操作が必要）
-2. **learn** を ON にし、割り当てたい action を選んでパッド / CC を叩く。同じトリガーが既にあれば上書き（警告）。`Esc` で learn 終了。learn 中もキーボードのパッドは使える
-3. nanoPAD2 を挿すと工場 Scene 1（GM drums、ch 1）プリセットのバナーが出る。**自動では適用しない**。適用後に pad 1 を叩いて確認。ズレていれば learn する
-4. マッピングは `localStorage` キー `vj-deck-midi-v1` に保存。JSON 書き出し / 読み込みで別 PC へ持てる
+1. Deck の MIDI パネルで **MIDI** を押す。権限は **2 段**（MIDI 本体と SysEx）。両方許可する
+2. nanoPAD2 は SysEx の **Search Device**（Family ID `12 01`）で確定し、**Native KORG Mode** に入る。`native` バッジが出る。入れなければ Current Scene Data Dump でパッドの Note# からマップを自動生成する
+3. **learn** を ON にし、割り当てたい action を選んでパッド / CC を叩く（nanoPAD2 以外、または Native を使わない場合）。同じトリガーが既にあれば上書き（警告）。`Esc` で learn 終了。learn 中もキーボードのパッドは使える
+4. マッピングは `localStorage` キー `vj-deck-midi-v1`（`{ activeMapping, nanopad: { preferNative, swapRows } }`）。JSON 書き出し / 読み込みで別 PC へ持てる
 
-X-Y パッド・MIDI 出力 / LED・ピッチベンド・MIDI クロックは未対応。
+**Native mode の in / out**: 接続時に Native In、Deck 窓を閉じる（またはリロードする）ときに Native Out を送る。送らないと nanoPAD2 が Native のまま残り、他アプリで普段のノートが出なくなる。戻らなければ **USB を抜くか電源再投入**。
+
+**Scene LED**（Native mode のみ）:
+
+| LED | 意味 |
+| --- | --- |
+| Scene 1 | host 接続中（conn live） |
+| Scene 2 | Deck auto ON |
+| Scene 3 | tempo LOCK |
+| Scene 4 | learn 中。エラー時は 500ms 点滅 |
+
+**既定マップ**（Native。上下が逆ならパネルの「上下入替」）: 下段 8 パッド（Note 72–79 / ch 2）で slot 1–8、上段（Note 64–71）で cut、Scene ボタン（CC 57 / ch 16）でタップテンポ、X-Y タッチ（CC 11）でカーソル発火。X/Y 軸は未割り当て（learn で hue / interval などに）。Touch Scale の `92/82/B2` は無視。
+
+ベロシティ cut は MIDI パネルの `cut ≥`（1–127）。空欄でオフ。強く叩いたら cut、弱ければ選択中 preset。
 
 ## テンポ同期（BPM 検出）
 
