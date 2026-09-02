@@ -1,5 +1,5 @@
 /**
- * Scene Deck の操作をキー / ボタン / 将来の MIDI から同じ経路に乗せる。
+ * Scene Deck の操作をキー / ボタン / MIDI から同じ経路に乗せる。
  *
  * keyToAction は純関数。トグル系（hue / bg / lock / autoCycle）だけは
  * 現在の App 表示が要るので第 2 引数を見る。無い（旧 host）ときは null。
@@ -14,6 +14,7 @@ export type DeckAction =
   | { type: 'auto.toggle' }
   | { type: 'auto.mode' }
   | { type: 'auto.interval'; dir: 1 | -1 }
+  | { type: 'auto.intervalAbs'; value01: number }
   | { type: 'bank.rebuild' }
   | { type: 'bank.gacha' }
   | { type: 'command'; command: DeckCommand };
@@ -37,6 +38,8 @@ export interface DeckActionContext {
   toggleAuto(): void;
   cycleAutoMode(): void;
   bumpInterval(dir: 1 | -1): void;
+  /** MIDI CC 連続値。0..1 を現在の auto kind の秒 / 小節レンジへ写す。 */
+  setIntervalAbs(value01: number): void;
   rebuildBank(): void;
   gachaBank(): void;
   postCommand(command: DeckCommand): void;
@@ -175,6 +178,9 @@ export function dispatchDeckAction(action: DeckAction, ctx: DeckActionContext): 
       break;
     case 'auto.interval':
       ctx.bumpInterval(action.dir);
+      break;
+    case 'auto.intervalAbs':
+      ctx.setIntervalAbs(action.value01);
       break;
     case 'bank.rebuild':
       ctx.rebuildBank();

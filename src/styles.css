@@ -850,6 +850,86 @@ html.deck-mode #root {
   align-items: center;
 }
 
+.deck-midi {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  border: 1px solid var(--panel-border);
+  background: var(--panel-bg);
+}
+
+.deck-midi-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.deck-midi-label {
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--panel-fg-dim);
+}
+
+.deck-midi-unsupported {
+  font-size: 13px;
+  color: hsl(32, 90%, 72%);
+}
+
+.deck-midi-name input {
+  width: 160px;
+  appearance: none;
+  border: 1px solid var(--panel-border);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--panel-fg);
+  border-radius: 10px;
+  padding: 7px 9px;
+  font-size: 13px;
+}
+
+.deck-midi-devices {
+  font-size: 11px;
+  color: var(--panel-fg-dim);
+}
+
+.deck-midi-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.deck-midi-action {
+  padding: 5px 8px;
+  font-size: 11px;
+}
+
+.deck-midi-action.bound {
+  border-color: rgba(120, 195, 255, 0.4);
+}
+
+.deck-midi-json {
+  width: 100%;
+  min-height: 64px;
+  resize: vertical;
+  appearance: none;
+  border: 1px solid var(--panel-border);
+  background: rgba(0, 0, 0, 0.35);
+  color: var(--panel-fg);
+  border-radius: 10px;
+  padding: 7px 9px;
+  font-family: ui-monospace, 'SF Mono', Menlo, monospace;
+  font-size: 11px;
+}
+
+.deck-banner .btn {
+  margin-left: 8px;
+  padding: 4px 8px;
+  font-size: 12px;
+}
+
 .deck-console {
   display: flex;
   flex-wrap: wrap;
