@@ -14,14 +14,8 @@ import { resolveBlendMode } from './ui/blend';
 import { ControlPanel } from './ui/ControlPanel';
 import { resolveOverlaySceneId } from './ui/overlay';
 import { TimelinePanel } from './ui/TimelinePanel';
-import { sanitizeSeed, useSettings } from './ui/useSettings';
-import type { Settings } from './ui/useSettings';
-import {
-  generateVariation,
-  nextAdoptedSeed,
-  nextVisualSeed,
-  randomSeed,
-} from './variation/generate';
+import { sanitizeSettings, useSettings, type Settings } from './ui/useSettings';
+import { generateVariation, randomSeed } from './variation/generate';
 
 /** Milliseconds of mouse inactivity before the panel + cursor fade out. */
 const IDLE_TIMEOUT_MS = 3000;
@@ -47,15 +41,7 @@ async function toggleFullscreen(): Promise<void> {
 export function App(): React.ReactElement {
   const { settings, update, initialUiHidden, initialOverlayRaw, initialBlendRaw } = useSettings();
 
-  // seed:set は Settings.seed だけ戻す。variation / 画は seed:gacha とパネル編集。
-  const adoptedSeedRef = useRef<string | null>(null);
-  const [visualSeed, setVisualSeed] = useState(settings.seed);
-  const variation = useMemo(() => generateVariation(visualSeed), [visualSeed]);
-
-  useEffect(() => {
-    adoptedSeedRef.current = nextAdoptedSeed(settings.seed, adoptedSeedRef.current);
-    setVisualSeed((cur) => nextVisualSeed(cur, settings.seed, adoptedSeedRef.current));
-  }, [settings.seed]);
+  const variation = useMemo(() => generateVariation(settings.seed), [settings.seed]);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const glCanvasRef = useRef<HTMLCanvasElement | null>(null);
@@ -80,7 +66,7 @@ export function App(): React.ReactElement {
           ? Math.min(360, Math.max(0, hue))
           : settingsRef.current.fixedHue;
       }
-      settingsRef.current = { ...settingsRef.current, ...next };
+      settingsRef.current = sanitizeSettings({ ...settingsRef.current, ...next });
       update(next);
     },
     [update],

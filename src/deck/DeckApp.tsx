@@ -238,6 +238,7 @@ export function DeckApp(): React.ReactElement {
   );
   const ignoreSlotClickRef = useRef(false);
   const skipRenameBlurRef = useRef(false);
+  const clearedRef = useRef(false);
 
   const midiDispatch = useCallback((action: DeckAction): void => {
     const ctx = ctxRef.current;
@@ -250,6 +251,7 @@ export function DeckApp(): React.ReactElement {
   const [initialStore] = useState(readDeckBankStore);
   const storeRef = useRef<DeckBankStore>(initialStore);
   const lastMainSeedRef = useRef<string | undefined>(initialStore.current?.mainSeed);
+  const [adoptSeed, setAdoptSeed] = useState(initialStore.current?.mainSeed);
   const restored = initialStore.current;
   const [bank, setBank] = useState<DeckScene[] | null>(() =>
     restored ? buildSceneBank(restored.base, restored.bankSeed, inlineCatalog) : null,
@@ -364,6 +366,7 @@ export function DeckApp(): React.ReactElement {
     const live = sharedRef.current?.currentPatch;
     if (!live) return;
     const seed = randomSeed();
+    clearedRef.current = false;
     setBankSeed(seed);
     setBankBase(live);
     setBank(buildSceneBank(live, seed, inlineCatalog));
@@ -375,6 +378,7 @@ export function DeckApp(): React.ReactElement {
     const base = bankBase;
     if (!base) return;
     const seed = randomSeed();
+    clearedRef.current = false;
     setBankSeed(seed);
     setBank(buildSceneBank(base, seed, inlineCatalog));
     setActiveSlotId(null);
@@ -642,46 +646,53 @@ export function DeckApp(): React.ReactElement {
     });
   }, []);
 
-  const applySnapshot = useCallback(
-    (snap: DeckBankSnapshot, opts?: { sendSeed?: boolean }): void => {
-      const auto = restoreAuto(snap);
-      setBankBase(snap.base);
-      setBankSeed(snap.bankSeed);
-      setBank(buildSceneBank(snap.base, snap.bankSeed, inlineCatalog));
-      setPreset(snap.preset);
-      setAutoOn(auto.on);
-      setAutoKind(auto.kind);
-      setAutoOrder(auto.order);
-      setAutoSeconds(auto.seconds);
-      setAutoBars(auto.bars);
-      setCursor(clampBankCursor(snap.cursor));
-      setBankStale(isBankSnapshotStale(snap, META_CATALOG));
-      lastMainSeedRef.current = snap.mainSeed;
-      // seed:set は host の Settings.seed だけ戻す（derivePatch しない）。pad は叩かない。
-      if (opts?.sendSeed && snap.mainSeed) {
-        postCommand({ kind: 'seed:set', seed: snap.mainSeed });
-      }
-    },
-    [postCommand],
-  );
+  const applySnapshot = useCallback((snap: DeckBankSnapshot): void => {
+    const auto = restoreAuto(snap);
+    clearedRef.current = false;
+    setBankBase(snap.base);
+    setBankSeed(snap.bankSeed);
+    setBank(buildSceneBank(snap.base, snap.bankSeed, inlineCatalog));
+    setPreset(snap.preset);
+    setAutoOn(auto.on);
+    setAutoKind(auto.kind);
+    setAutoOrder(auto.order);
+    setAutoSeconds(auto.seconds);
+    setAutoBars(auto.bars);
+    setCursor(clampBankCursor(snap.cursor));
+    setBankStale(isBankSnapshotStale(snap, META_CATALOG));
+    lastMainSeedRef.current = snap.mainSeed;
+    setAdoptSeed(snap.mainSeed);
+  }, []);
+
+  const captureCurrentRef = useRef(captureCurrent);
+  captureCurrentRef.current = captureCurrent;
+  const persistStoreRef = useRef(persistStore);
+  persistStoreRef.current = persistStore;
+
+  const flushAutosave = useCallback((): void => {
+    if (autosaveTimerRef.current === null) return;
+    window.clearTimeout(autosaveTimerRef.current);
+    autosaveTimerRef.current = null;
+    if (clearedRef.current) return;
+    const snap = captureCurrentRef.current(storeRef.current.current?.name ?? '');
+    if (snap === null) return;
+    persistStoreRef.current({ ...storeRef.current, current: snap });
+  }, []);
 
   // bankBase が無い（未接続・未復元）ときは書かない。500ms debounce。
   useEffect(() => {
     if (bankBase === null || bankSeed === '') return;
+    if (clearedRef.current) return;
     if (autosaveTimerRef.current !== null) {
       window.clearTimeout(autosaveTimerRef.current);
     }
     autosaveTimerRef.current = window.setTimeout(() => {
       autosaveTimerRef.current = null;
+      if (clearedRef.current) return;
       const snap = captureCurrent(storeRef.current.current?.name ?? '');
       if (snap === null) return;
       persistStore({ ...storeRef.current, current: snap });
     }, BANK_AUTOSAVE_MS);
-    return () => {
-      if (autosaveTimerRef.current === null) return;
-      window.clearTimeout(autosaveTimerRef.current);
-      autosaveTimerRef.current = null;
-    };
   }, [
     bank,
     bankSeed,
@@ -698,11 +709,28 @@ export function DeckApp(): React.ReactElement {
     persistStore,
   ]);
 
+  useEffect(() => {
+    const onPageHide = (): void => {
+      flushAutosave();
+    };
+    const onVisibility = (): void => {
+      if (document.visibilityState === 'hidden') flushAutosave();
+    };
+    window.addEventListener('pagehide', onPageHide);
+    document.addEventListener('visibilitychange', onVisibility);
+    return () => {
+      window.removeEventListener('pagehide', onPageHide);
+      document.removeEventListener('visibilitychange', onVisibility);
+      flushAutosave();
+    };
+  }, [flushAutosave]);
+
   const saveToSlot = useCallback(
     (id: BankSlotId): void => {
       const prev = storeRef.current.slots[id];
       const snap = captureCurrent(prev?.name ?? '');
       if (snap === null) return;
+      clearedRef.current = false;
       persistStore({
         ...storeRef.current,
         current: snap,
@@ -722,7 +750,7 @@ export function DeckApp(): React.ReactElement {
     (id: BankSlotId): void => {
       const snap = storeRef.current.slots[id];
       if (!snap) return;
-      applySnapshot(snap, { sendSeed: true });
+      applySnapshot(snap);
       persistStore({ ...storeRef.current, current: snap });
       setActiveSlotId(id);
     },
@@ -746,10 +774,16 @@ export function DeckApp(): React.ReactElement {
       window.clearTimeout(autosaveTimerRef.current);
       autosaveTimerRef.current = null;
     }
+    clearedRef.current = true;
     persistStore({ ...storeRef.current, current: null });
     setClearArmed(false);
     setBankMenuOpen(false);
   }, [persistStore]);
+
+  const adoptMainSeed = useCallback((): void => {
+    if (!adoptSeed) return;
+    postCommand({ kind: 'seed:set', seed: adoptSeed });
+  }, [adoptSeed, postCommand]);
 
   const exportCurrent = useCallback(async (): Promise<void> => {
     setBankExportOk(false);
@@ -779,7 +813,7 @@ export function DeckApp(): React.ReactElement {
         setBankImportError('スナップショットが不正です');
         return;
       }
-      applySnapshot(snap, { sendSeed: true });
+      applySnapshot(snap);
       persistStore({ ...storeRef.current, current: snap });
       setActiveSlotId(null);
       setBankImportError(null);
@@ -788,6 +822,8 @@ export function DeckApp(): React.ReactElement {
   );
 
   const startSlotPress = useCallback((id: BankSlotId): void => {
+    ignoreSlotClickRef.current = false;
+    skipRenameBlurRef.current = false;
     if (longPressRef.current) window.clearTimeout(longPressRef.current.timer);
     longPressRef.current = {
       id,
@@ -1008,6 +1044,7 @@ export function DeckApp(): React.ReactElement {
                 onContextMenu={(e) => {
                   e.preventDefault();
                   endSlotPress();
+                  skipRenameBlurRef.current = false;
                   if (slotMap[id]) setRenamingSlot(id);
                 }}
                 onClick={(e) => {
@@ -1078,6 +1115,9 @@ export function DeckApp(): React.ReactElement {
         </div>
         {bankMenuOpen ? (
           <div className="deck-banks-row">
+            <button type="button" className="btn" disabled={!adoptSeed} onClick={adoptMainSeed}>
+              seed を採用
+            </button>
             {clearArmed ? (
               <button type="button" className="btn" onClick={clearCurrent}>
                 confirm clear current
