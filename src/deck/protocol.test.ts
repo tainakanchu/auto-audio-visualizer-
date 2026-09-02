@@ -208,4 +208,65 @@ describe('parseDeckResponse', () => {
       }),
     ).toBeNull();
   });
+
+  it('accepts a finite hue and keeps it', () => {
+    for (const hue of [0, 213, 359.5]) {
+      const withHue = sampleState({ hue });
+      expect(parseDeckResponse({ kind: 'deck:state', state: withHue })).toEqual({
+        kind: 'deck:state',
+        state: withHue,
+      });
+    }
+  });
+
+  it('keeps hue undefined when the field is missing (legacy host)', () => {
+    const empty = sampleState();
+    expect(empty.hue).toBeUndefined();
+    expect('hue' in empty).toBe(false);
+    const parsed = parseDeckResponse({ kind: 'deck:state', state: empty });
+    expect(parsed).toEqual({ kind: 'deck:state', state: empty });
+    if (parsed?.kind === 'deck:state') {
+      expect(parsed.state.hue).toBeUndefined();
+      expect('hue' in parsed.state).toBe(false);
+    }
+  });
+
+  it('omits hue when the input has explicit hue: undefined', () => {
+    const parsed = parseDeckResponse({
+      kind: 'deck:state',
+      state: { ...sampleState(), hue: undefined },
+    });
+    expect(parsed).not.toBeNull();
+    if (parsed?.kind === 'deck:state') {
+      expect(parsed.state.hue).toBeUndefined();
+      expect('hue' in parsed.state).toBe(false);
+    }
+  });
+
+  it('rejects NaN or non-number hue', () => {
+    expect(
+      parseDeckResponse({
+        kind: 'deck:state',
+        state: { ...sampleState(), hue: Number.NaN },
+      }),
+    ).toBeNull();
+    expect(
+      parseDeckResponse({
+        kind: 'deck:state',
+        state: { ...sampleState(), hue: Number.POSITIVE_INFINITY },
+      }),
+    ).toBeNull();
+    expect(
+      parseDeckResponse({
+        kind: 'deck:state',
+        state: { ...sampleState(), hue: '200' },
+      }),
+    ).toBeNull();
+    expect(
+      parseDeckResponse({
+        kind: 'deck:state',
+        state: { ...sampleState(), hue: null },
+      }),
+    ).toBeNull();
+  });
 });

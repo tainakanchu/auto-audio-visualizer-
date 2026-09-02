@@ -14,6 +14,7 @@ import {
   type AutoMode,
   type AutoOrder,
 } from './autoAdvance';
+import { circularHueDelta } from './hue';
 import {
   DECK_CHANNEL,
   parseDeckResponse,
@@ -30,6 +31,8 @@ const POLL_MS = 500;
 const POLL_BARS_MS = 250;
 const GRID_COLS = 4;
 const GRID_ROWS = 2;
+/** hue サイクル中に全サムネを描き直す最短円環距離。小さすぎると毎秒 8 draw になる。 */
+const HUE_REDRAW_DEG = 12;
 
 function isEditableTarget(el: EventTarget | null): boolean {
   if (!(el instanceof HTMLElement)) return false;
@@ -127,6 +130,10 @@ export function DeckApp(): React.ReactElement {
   const sharedRef = useRef<DeckSharedState | null>(null);
   const presetRef = useRef<TransitionPresetId>('default');
   const thumbsRef = useRef<ThumbRenderer | null>(null);
+  const hueRef = useRef(0);
+  const lastThumbHueRef = useRef<number | null>(null);
+  const thumbUrlsRef = useRef<Array<string | null>>([]);
+  const thumbBankRef = useRef<DeckScene[] | null>(null);
   const cursorRef = useRef(0);
   const pollMsRef = useRef(POLL_MS);
   // host が最後に受理したスロット。楽観更新した playhead の巻き戻し先。
@@ -146,12 +153,14 @@ export function DeckApp(): React.ReactElement {
   const [autoSeconds, setAutoSeconds] = useState(AUTO_SECONDS_DEFAULT);
   const [autoBars, setAutoBars] = useState(AUTO_BARS_DEFAULT);
   const [thumbUrls, setThumbUrls] = useState<Array<string | null>>([]);
+  const [hueEpoch, setHueEpoch] = useState(0);
 
   bankRef.current = bank;
   sharedRef.current = shared;
   presetRef.current = preset;
   cursorRef.current = cursor;
   pollMsRef.current = autoOn && autoKind === 'bars' ? POLL_BARS_MS : POLL_MS;
+  hueRef.current = shared?.hue ?? 0;
 
   const postRequest = useCallback((req: DeckRequest): void => {
     channelRef.current?.postMessage(req);
@@ -353,33 +362,63 @@ export function DeckApp(): React.ReactElement {
     };
   }, []);
 
+  // |Δhue| が閾値を超えたときだけ epoch を進めてサムネを描き直す。
+  // 進行中ループのキャンセルは下の effect に任せる（ここが毎 poll で再実行されると途中の rAF が死ぬ）。
+  useEffect(() => {
+    const hue = shared?.hue ?? 0;
+    const last = lastThumbHueRef.current;
+    if (last === null || circularHueDelta(last, hue) < HUE_REDRAW_DEG) return;
+    lastThumbHueRef.current = hue;
+    setHueEpoch((n) => n + 1);
+  }, [shared?.hue]);
+
   // サムネは 1 枚/フレーム。コンパイルが UI を止めないようにする。
+  // hue だけの描き直しでは直前の画像を残し、bank が変わったときだけチップに戻す。
   useEffect(() => {
     if (!bank) {
+      thumbUrlsRef.current = [];
+      thumbBankRef.current = null;
       setThumbUrls([]);
       return;
     }
     let cancelled = false;
     let i = 0;
-    const urls: Array<string | null> = Array.from({ length: bank.length }, () => null);
-    setThumbUrls(urls.slice());
+    let raf = 0;
+    const passHue = hueRef.current;
+    lastThumbHueRef.current = passHue;
+
+    const sameBank = thumbBankRef.current === bank && thumbUrlsRef.current.length === bank.length;
+    thumbBankRef.current = bank;
+    const urls: Array<string | null> = sameBank
+      ? thumbUrlsRef.current.slice()
+      : Array.from({ length: bank.length }, () => null);
+    if (!sameBank) {
+      thumbUrlsRef.current = urls.slice();
+      setThumbUrls(urls.slice());
+    }
 
     const tick = (): void => {
       if (cancelled) return;
       const renderer = thumbsRef.current;
+      if (!renderer) {
+        raf = window.requestAnimationFrame(tick);
+        return;
+      }
       const scene = bank[i];
-      if (!renderer || !scene) return;
-      urls[i] = renderer.render(scene.patch);
-      setThumbUrls(urls.slice());
+      if (!scene) return;
+      urls[i] = renderer.render(scene.patch, { hue: passHue });
+      const snapshot = urls.slice();
+      thumbUrlsRef.current = snapshot;
+      setThumbUrls(snapshot);
       i += 1;
-      if (i < bank.length) window.requestAnimationFrame(tick);
+      if (i < bank.length) raf = window.requestAnimationFrame(tick);
     };
-    const raf = window.requestAnimationFrame(tick);
+    raf = window.requestAnimationFrame(tick);
     return () => {
       cancelled = true;
       window.cancelAnimationFrame(raf);
     };
-  }, [bank]);
+  }, [bank, hueEpoch]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
@@ -515,6 +554,9 @@ export function DeckApp(): React.ReactElement {
       <div className="deck-status">
         <span>
           conn <strong>{connected ? 'live' : missingHost ? 'missing' : 'waiting'}</strong>
+        </span>
+        <span>
+          hue <strong>{shared?.hue === undefined ? '—' : `${Math.round(shared.hue)}°`}</strong>
         </span>
         <span>
           t <strong>{shared ? `${shared.nowSec.toFixed(1)}s` : '—'}</strong>

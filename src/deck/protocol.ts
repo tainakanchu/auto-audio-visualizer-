@@ -32,6 +32,8 @@ export interface DeckSharedState {
   recordingActive: boolean;
   /** host が最後に受理した trigger の label（デッキのアクティブ表示確定用） */
   lastTriggerLabel: string | null;
+  /** レンダラの現在 hue（0..360、variation.hueOffset 込み）。旧 host は送らないので optional。 */
+  hue?: number;
 }
 
 /**
@@ -90,6 +92,13 @@ function parseSharedState(input: unknown): DeckSharedState | null {
   if (typeof input.recordingActive !== 'boolean') return null;
   if (typeof input.lastTriggerLabel !== 'string' && input.lastTriggerLabel !== null) return null;
 
+  // 欠損は undefined のまま通す。値が来て非数なら state ごと落とす。
+  let hue: number | undefined;
+  if (input.hue !== undefined) {
+    if (!isFiniteNumber(input.hue)) return null;
+    hue = input.hue;
+  }
+
   let currentPatch: VisualPatch | null = null;
   if (input.currentPatch !== null) {
     const parsed = parsePatch(input.currentPatch);
@@ -106,6 +115,7 @@ function parseSharedState(input: unknown): DeckSharedState | null {
     lockedUntilSec: input.lockedUntilSec,
     recordingActive: input.recordingActive,
     lastTriggerLabel: input.lastTriggerLabel,
+    ...(hue !== undefined ? { hue } : {}),
   };
 }
 

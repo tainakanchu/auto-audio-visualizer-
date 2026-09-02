@@ -208,6 +208,8 @@ let scheduler: SchedulerState = createSchedulerState();
 let recorder: ReturnType<typeof createRecorder> | null = null;
 /** 直近フレームの TimeContext。UI からの op 適用に使う。 */
 let lastCtx: TimeContext = { nowSec: 0, barCount: 0, barPhase: 0, bpm: 0, tempoLocked: false };
+/** 直近フレームのレンダラ hue（variation.hueOffset 込み）。未描画時は 0。 */
+let lastHue = 0;
 /** 次にフェード可能になったフレームで適用する遷移先。Timeline / UI 提案が積む。 */
 let pendingTarget: { seed: string; patch: VisualPatch; spec: TransitionSpec } | null = null;
 let unregisterControl: (() => void) | null = null;
@@ -841,6 +843,8 @@ const control: SynthControlBackend = {
       // 画面に出ているデッキのもの。クロスフェード中に incoming を返すと、
       // まだ主役でない Patch の演出を報告することになる。
       reactions: front ? front.assembled.reactions : [],
+      // GlSceneContext.hue は variation.hueOffset 込み。Deck は再加算しない。
+      hue: lastHue,
     };
   },
 
@@ -1012,7 +1016,8 @@ export const semanticSynthScene: GlScene = {
   },
 
   draw(s: GlSceneContext) {
-    const { gl, pxW, pxH, t, dt, audio, va } = s;
+    const { gl, pxW, pxH, t, dt, audio, va, hue } = s;
+    lastHue = hue;
     if (!vao) return;
 
     // Scene time drives every transition — never wall-clock, so the scene stays
@@ -1104,6 +1109,7 @@ export const semanticSynthScene: GlScene = {
   dispose(gl: WebGL2RenderingContext) {
     unregisterControl?.();
     unregisterControl = null;
+    lastHue = 0;
     unsubscribeImages?.();
     unsubscribeImages = null;
     disposeTextures(gl);
