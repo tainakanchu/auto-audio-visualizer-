@@ -110,13 +110,15 @@ function sampleApp(overrides: Partial<DeckAppState> = {}): DeckAppState {
   };
 }
 
+type RunCommand = DeckHostHandlers['runCommand'];
+
 function stubHandlers(
   init: {
     app?: DeckAppState;
-    runCommand?: ReturnType<typeof vi.fn>;
+    runCommand?: ReturnType<typeof vi.fn<RunCommand>>;
   } = {},
-): DeckHostHandlers & { runCommand: ReturnType<typeof vi.fn> } {
-  const runCommand = init.runCommand ?? vi.fn(() => ({ ok: true, issues: [] as string[] }));
+): DeckHostHandlers & { runCommand: ReturnType<typeof vi.fn<RunCommand>> } {
+  const runCommand = init.runCommand ?? vi.fn<RunCommand>(() => ({ ok: true, issues: [] }));
   return {
     getAppState: () => init.app ?? sampleApp(),
     runCommand,
@@ -309,7 +311,7 @@ describe('handleDeckRequest', () => {
   it('commandResult carries handler failure issues', () => {
     const { control } = stubControl();
     const handlers = stubHandlers({
-      runCommand: vi.fn(() => ({ ok: false, issues: ['unknown scene: nope'] })),
+      runCommand: vi.fn<RunCommand>(() => ({ ok: false, issues: ['unknown scene: nope'] })),
     });
     const posted = collect(
       control,
