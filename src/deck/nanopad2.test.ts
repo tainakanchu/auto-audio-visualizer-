@@ -29,7 +29,6 @@ function bytes(...data: number[]): Uint8Array {
 
 function dumpSysex(unpacked: Uint8Array, globalCh = 0): Uint8Array {
   const packed = pack7bit(unpacked);
-  const num = packed.length + 1;
   return Uint8Array.from([
     0xf0,
     0x42,
@@ -39,7 +38,7 @@ function dumpSysex(unpacked: Uint8Array, globalCh = 0): Uint8Array {
     0x12,
     0x00,
     0x7f,
-    num,
+    0x70,
     0x40,
     ...packed,
     0xf7,
@@ -170,9 +169,13 @@ describe('scene dump → mapping', () => {
     const unpacked = new Uint8Array(SCENE_DUMP_UNPACKED_BYTES);
     unpacked[0] = 0x40;
     unpacked[1] = 60;
+    unpacked[2] = 9;
+    unpacked[3] = 10;
+    unpacked[4] = 11;
     unpacked[5] = 2;
     unpacked[8 * 6] = 0x40;
     unpacked[8 * 6 + 1] = 72;
+    unpacked[8 * 6 + 2] = 3;
     unpacked[8 * 6 + 5] = 16;
     const pads = parseSceneDumpPads(unpacked);
     expect(pads[0]).toEqual({ assign: 'note', number: 60, ch: 2 });
@@ -211,6 +214,27 @@ describe('scene dump → mapping', () => {
     expect(
       resolveMidiBinding({ kind: 'noteOn', ch: 3, note: 40, velocity: 40 }, mapping)?.action,
     ).toEqual({ type: 'trigger', slot: 0, cut: true });
+  });
+
+  it('maps dump pads 0–7 to cut and 8–15 to trigger like Native', () => {
+    const pads: NanopadPad[] = Array.from({ length: 16 }, (_, i) => ({
+      assign: 'note' as const,
+      number: i < 8 ? 64 + i : 72 + (i - 8),
+      ch: 1,
+    }));
+    const mapping = mappingFromPads(pads);
+    expect(
+      resolveMidiBinding({ kind: 'noteOn', ch: 1, note: 72, velocity: 40 }, mapping)?.action,
+    ).toEqual({ type: 'trigger', slot: 0 });
+    expect(
+      resolveMidiBinding({ kind: 'noteOn', ch: 1, note: 79, velocity: 40 }, mapping)?.action,
+    ).toEqual({ type: 'trigger', slot: 7 });
+    expect(
+      resolveMidiBinding({ kind: 'noteOn', ch: 1, note: 64, velocity: 40 }, mapping)?.action,
+    ).toEqual({ type: 'trigger', slot: 0, cut: true });
+    expect(
+      resolveMidiBinding({ kind: 'noteOn', ch: 1, note: 71, velocity: 40 }, mapping)?.action,
+    ).toEqual({ type: 'trigger', slot: 7, cut: true });
   });
 });
 

@@ -264,12 +264,12 @@ function parseModeData(data: Uint8Array): NanopadSysex | null {
 function parseSceneDump(data: Uint8Array): NanopadSysex | null {
   // Spec 3-1 (7): F0 42 4g 00 01 12 00 7F 70 40 <111 packed> F7
   // [7]=7F Variable, [8]=70 Num of Data (1+111), [9]=40 Func.
-  if (data.length < 11 || data[6] !== 0x00 || data[7] !== 0x7f) return null;
+  if (data.length < 12 || data[6] !== 0x00 || data[7] !== 0x7f) return null;
   let packed: Uint8Array;
-  if (data[8] === 0x7f && data[9] === 0x02 && data.length >= 14 && data[12] === 0x40) {
-    packed = data.subarray(13, data.length - 1);
-  } else if (data[9] === 0x40) {
+  if (data[8] !== 0x7f && data[9] === 0x40) {
     packed = data.subarray(10, data.length - 1);
+  } else if (data[8] === 0x7f && data[9] === 0x02 && data.length >= 15 && data[12] === 0x40) {
+    packed = data.subarray(13, data.length - 1);
   } else {
     return null;
   }

@@ -318,6 +318,7 @@ export function useMidi(opts: {
       pad1Note: number,
       inputId: string | null,
     ): void => {
+      if (savedRef.current && !isNanopadMappingName(mappingRef.current.name)) return;
       if (!shouldAutoApply(mappingRef.current, savedRef.current) && sourceRef.current === null)
         return;
       commitMapping(mergeGenerated(mappingRef.current, generated));

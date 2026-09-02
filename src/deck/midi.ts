@@ -190,7 +190,8 @@ export type LearnAccept =
 
 /**
  * learn 1 メッセージ。press の CC value<64 は無視。直前と同じ trigger は
- * 別 trigger が来るまで無視。value-edge は CC value<64 を release 扱いしない。
+ * 別 trigger が来るまで無視。value-edge のラッチは lastBound.edge を見る
+ * （次 item が press でも CC value<64 で解除しない）。
  */
 export function acceptLearnMessage(
   msg: MidiMessage,
