@@ -1,0 +1,14 @@
+version: 1
+# タグは複数文書を横断する検索軸。製品名・API 名など文書固有の語は本文検索へ任せる。
+# 必要になった時点で name / category / description を揃えて追加する。
+# category の例: topic / domain / property / technology
+tags:
+  - name: verification
+    category: topic
+    description: テスト・検証・デプロイ確認の手順と落とし穴
+  - name: generator
+    category: domain
+    description: 映像 generator の設計・実装
+  - name: deck
+    category: domain
+    description: deck・外部制御まわり
