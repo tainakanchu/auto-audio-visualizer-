@@ -143,6 +143,49 @@ export function triggerFromMessage(
   return null;
 }
 
+export function isMidiRelease(msg: MidiMessage): boolean {
+  return msg.kind === 'noteOff' || (msg.kind === 'cc' && msg.value < 64);
+}
+
+/** note/cc の同一性。edge は見ない（press の押下と離しを同一 trigger にする）。 */
+export function triggerIdentity(msg: MidiMessage): MidiTrigger | null {
+  if (msg.kind === 'noteOn' || msg.kind === 'noteOff') {
+    return { kind: 'note', ch: msg.ch, note: msg.note };
+  }
+  if (msg.kind === 'cc') {
+    return { kind: 'cc', ch: msg.ch, controller: msg.controller, edge: 'press' };
+  }
+  return null;
+}
+
+export type LearnAccept =
+  | { bind: MidiTrigger; lastBound: MidiTrigger }
+  | { bind: null; lastBound: MidiTrigger | null };
+
+/**
+ * learn 1 メッセージ。press の CC value<64 は無視。直前と同じ trigger は
+ * 別 trigger か release まで無視（ボタン離し / ノブ連打で次の action を食わない）。
+ */
+export function acceptLearnMessage(
+  msg: MidiMessage,
+  ccEdge: 'press' | 'value',
+  lastBound: MidiTrigger | null,
+): LearnAccept {
+  const identity = triggerIdentity(msg);
+  if (lastBound && identity && triggersOverlap(lastBound, identity)) {
+    return { bind: null, lastBound: isMidiRelease(msg) ? null : lastBound };
+  }
+  if (msg.kind === 'noteOff' || msg.kind === 'sysex') {
+    return { bind: null, lastBound };
+  }
+  if (msg.kind === 'cc' && ccEdge === 'press' && msg.value < 64) {
+    return { bind: null, lastBound };
+  }
+  const trigger = triggerFromMessage(msg, ccEdge);
+  if (trigger === null) return { bind: null, lastBound };
+  return { bind: trigger, lastBound: trigger };
+}
+
 export function upsertMidiBinding(
   mapping: MidiMapping,
   trigger: MidiTrigger,
@@ -251,6 +294,7 @@ export const MIDI_LEARN_ITEMS: MidiLearnItem[] = [
 ];
 
 function triggerMatches(trigger: MidiTrigger, msg: MidiMessage): boolean {
+  if (msg.kind === 'sysex') return false;
   const chOk = trigger.ch === 'any' || trigger.ch === msg.ch;
   if (!chOk) return false;
   if (trigger.kind === 'note' && msg.kind === 'noteOn') return trigger.note === msg.note;

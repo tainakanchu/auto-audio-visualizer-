@@ -5,6 +5,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { DeckAction } from './actions';
 import {
+  acceptLearnMessage,
   emptyMidiMapping,
   MIDI_LEARN_ITEMS,
   MIDI_STORAGE_KEY,
@@ -12,10 +13,10 @@ import {
   parseMidiMessage,
   parseMidiStorage,
   resolveMidiBinding,
-  triggerFromMessage,
   upsertMidiBinding,
   type MidiLearnItem,
   type MidiMapping,
+  type MidiTrigger,
 } from './midi';
 import { NANOPAD2_FACTORY_SCENE1, NANOPAD2_PAD1_NOTE } from './midiPresets';
 
@@ -136,6 +137,7 @@ export function useMidi(opts: { dispatch: (action: DeckAction) => void }): UseMi
   const accessRef = useRef<MidiAccessLike | null>(null);
   const inputsRef = useRef<MidiInputLike[]>([]);
   const ccHeldRef = useRef(new Set<string>());
+  const learnLatchRef = useRef<MidiTrigger | null>(null);
   const onMessageRef = useRef<(ev: { data?: Uint8Array | null }) => void>(() => {});
 
   const commitMapping = useCallback((next: MidiMapping): void => {
@@ -148,6 +150,7 @@ export function useMidi(opts: { dispatch: (action: DeckAction) => void }): UseMi
   const endLearn = useCallback((): void => {
     setLearning(false);
     learningRef.current = false;
+    learnLatchRef.current = null;
   }, []);
 
   onMessageRef.current = (ev: { data?: Uint8Array | null }): void => {
@@ -156,16 +159,16 @@ export function useMidi(opts: { dispatch: (action: DeckAction) => void }): UseMi
     const data = raw instanceof Uint8Array ? raw : new Uint8Array(raw);
     const msg = parseMidiMessage(data);
     if (msg === null) return;
-    if (msg.kind === 'noteOff' || msg.kind === 'sysex') return;
 
     if (learningRef.current) {
       const item = MIDI_LEARN_ITEMS[learnIndexRef.current];
       if (!item) return;
-      const trigger = triggerFromMessage(msg, item.ccEdge);
-      if (trigger === null) return;
+      const accepted = acceptLearnMessage(msg, item.ccEdge, learnLatchRef.current);
+      learnLatchRef.current = accepted.lastBound;
+      if (accepted.bind === null) return;
       const { mapping: next, overwritten } = upsertMidiBinding(
         mappingRef.current,
-        trigger,
+        accepted.bind,
         item.action,
       );
       commitMapping(next);
@@ -175,6 +178,8 @@ export function useMidi(opts: { dispatch: (action: DeckAction) => void }): UseMi
       setLearnIndexState(nextIndex);
       return;
     }
+
+    if (msg.kind === 'noteOff' || msg.kind === 'sysex') return;
 
     if (pad1ConfirmRef.current && msg.kind === 'noteOn') {
       pad1ConfirmRef.current = false;
@@ -265,6 +270,7 @@ export function useMidi(opts: { dispatch: (action: DeckAction) => void }): UseMi
       learningRef.current = next;
       return next;
     });
+    learnLatchRef.current = null;
     setLearnWarning(null);
     setMismatch(false);
     pad1ConfirmRef.current = false;
@@ -292,6 +298,7 @@ export function useMidi(opts: { dispatch: (action: DeckAction) => void }): UseMi
     setPad1Confirm(true);
     setLearning(false);
     learningRef.current = false;
+    learnLatchRef.current = null;
   }, [commitMapping]);
 
   const startLearnFromMismatch = useCallback((): void => {
@@ -300,6 +307,7 @@ export function useMidi(opts: { dispatch: (action: DeckAction) => void }): UseMi
     learningRef.current = true;
     pad1ConfirmRef.current = false;
     setPad1Confirm(false);
+    learnLatchRef.current = null;
   }, []);
 
   const exportToClipboard = useCallback(async (): Promise<void> => {

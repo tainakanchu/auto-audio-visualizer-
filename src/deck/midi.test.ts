@@ -1,10 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import {
+  acceptLearnMessage,
   parseMidiMapping,
   parseMidiMessage,
   parseMidiStorage,
   resolveMidiBinding,
   type MidiMapping,
+  type MidiTrigger,
 } from './midi';
 import { NANOPAD2_FACTORY_SCENE1, NANOPAD2_PAD1_NOTE } from './midiPresets';
 
@@ -126,6 +128,9 @@ describe('resolveMidiBinding', () => {
       resolveMidiBinding({ kind: 'noteOn', ch: 0, note: 11, velocity: 64 }, mapping),
     ).toBeNull();
     expect(resolveMidiBinding({ kind: 'noteOff', ch: 0, note: 10 }, mapping)).toBeNull();
+    expect(
+      resolveMidiBinding({ kind: 'sysex', data: new Uint8Array([0xf0, 0xf7]) }, mapping),
+    ).toBeNull();
   });
 
   it('fires CC press at value >= 64 and ignores below', () => {
@@ -250,6 +255,59 @@ describe('parseMidiMapping', () => {
         NANOPAD2_FACTORY_SCENE1,
       ),
     ).toEqual({ type: 'trigger', slot: 0, cut: true });
+  });
+});
+
+describe('acceptLearnMessage', () => {
+  const pressCc = (
+    value: number,
+  ): { kind: 'cc'; ch: number; controller: number; value: number } => ({
+    kind: 'cc',
+    ch: 0,
+    controller: 16,
+    value,
+  });
+  const boundPress: MidiTrigger = { kind: 'cc', ch: 0, controller: 16, edge: 'press' };
+
+  it('ignores CC value<64 when the current item is press', () => {
+    expect(acceptLearnMessage(pressCc(0), 'press', null)).toEqual({
+      bind: null,
+      lastBound: null,
+    });
+    expect(acceptLearnMessage(pressCc(63), 'press', null)).toEqual({
+      bind: null,
+      lastBound: null,
+    });
+    expect(acceptLearnMessage(pressCc(64), 'press', null)).toEqual({
+      bind: boundPress,
+      lastBound: boundPress,
+    });
+  });
+
+  it('does not rebind an overlapping press release onto the next action', () => {
+    const afterPress = acceptLearnMessage(pressCc(127), 'press', null);
+    expect(afterPress.bind).toEqual(boundPress);
+    const release = acceptLearnMessage(pressCc(0), 'press', afterPress.lastBound);
+    expect(release).toEqual({ bind: null, lastBound: null });
+  });
+
+  it('ignores a value-edge knob stream until a different trigger or a release', () => {
+    const first = acceptLearnMessage(pressCc(80), 'value', null);
+    expect(first.bind).toEqual({ kind: 'cc', ch: 0, controller: 16, edge: 'value' });
+    expect(acceptLearnMessage(pressCc(90), 'value', first.lastBound)).toEqual({
+      bind: null,
+      lastBound: first.lastBound,
+    });
+    expect(acceptLearnMessage(pressCc(10), 'value', first.lastBound)).toEqual({
+      bind: null,
+      lastBound: null,
+    });
+    const other = acceptLearnMessage(
+      { kind: 'cc', ch: 0, controller: 17, value: 40 },
+      'value',
+      first.lastBound,
+    );
+    expect(other.bind).toEqual({ kind: 'cc', ch: 0, controller: 17, edge: 'value' });
   });
 });
 
