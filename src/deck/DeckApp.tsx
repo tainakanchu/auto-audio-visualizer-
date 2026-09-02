@@ -657,7 +657,7 @@ export function DeckApp(): React.ReactElement {
       setCursor(clampBankCursor(snap.cursor));
       setBankStale(isBankSnapshotStale(snap, META_CATALOG));
       lastMainSeedRef.current = snap.mainSeed;
-      // 呼び出しだけでは live 画を切り替えない。seed:set は Settings.seed の復元だけ。
+      // seed:set は host の Settings.seed だけ戻す（derivePatch しない）。pad は叩かない。
       if (opts?.sendSeed && snap.mainSeed) {
         postCommand({ kind: 'seed:set', seed: snap.mainSeed });
       }

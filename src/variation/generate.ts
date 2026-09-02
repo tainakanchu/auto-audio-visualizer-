@@ -54,6 +54,19 @@ function intRange(r: number, lo: number, hi: number): number {
 }
 
 /**
+ * seed:set は Settings.seed だけ戻す。adopted と settings が一致している間は
+ * いまの variation seed を維持し、derive / setVariation しない。
+ */
+export function nextVisualSeed(
+  visualSeed: string,
+  settingsSeed: string,
+  adoptedSeed: string | null,
+): string {
+  if (adoptedSeed === settingsSeed) return visualSeed;
+  return settingsSeed;
+}
+
+/**
  * Build a {@link Variation} deterministically from a seed string.
  *
  * IMPORTANT: every parameter is drawn from the PRNG in a FIXED order. The order

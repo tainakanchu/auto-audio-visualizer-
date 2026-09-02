@@ -155,7 +155,10 @@ type Compiled = {
 type DeckPhase = 'idle' | 'warmup' | 'fading';
 
 let vao: WebGLVertexArrayObject | null = null;
-/** Edge detector for the va.seed path. Written there and nowhere else. */
+/**
+ * Edge detector for the va.seed path. Timeline は書かない。
+ * Settings.seed だけ戻す {@link adoptVaSeed} は、derivePatch せずに消費済みにする。
+ */
 let observedVaSeed: string | null = null;
 /** 現在セットアップ中／進行中の遷移に使う spec。 */
 let activeSpec: TransitionSpec = DEFAULT_TRANSITION;
@@ -625,6 +628,14 @@ function gotoPatch(
   // Different graph → a second deck has to be compiled before anything fades.
   startLoad(gl, seed, patch, nowMs);
   notifySynthControlChanged();
+}
+
+/**
+ * Settings.seed だけ合わせる（Deck の seed:set）。gotoPatch / derivePatch はしない。
+ * 画を変えるのは seed:gacha → va.seed 変更 → {@link syncSeed}。
+ */
+export function adoptVaSeed(seed: string): void {
+  observedVaSeed = seed;
 }
 
 /** React to a va.seed change. The topology decides which kind of transition runs. */

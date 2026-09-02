@@ -5,6 +5,7 @@ import { openSceneDeck } from './deck/openDeck';
 import type { DeckAppState, DeckCommand } from './deck/protocol';
 import { Renderer } from './render/Renderer';
 import { scenes, sceneByIndex, sceneIndexById } from './scenes';
+import { adoptVaSeed } from './scenes/semanticSynth';
 import { initBridgeClient } from './synth/bridgeClient';
 import { getSynthControl } from './synth/control';
 import { rerollPatch } from './synth/derive';
@@ -14,9 +15,9 @@ import { resolveBlendMode } from './ui/blend';
 import { ControlPanel } from './ui/ControlPanel';
 import { resolveOverlaySceneId } from './ui/overlay';
 import { TimelinePanel } from './ui/TimelinePanel';
-import { useSettings } from './ui/useSettings';
+import { sanitizeSeed, useSettings } from './ui/useSettings';
 import type { Settings } from './ui/useSettings';
-import { generateVariation, randomSeed } from './variation/generate';
+import { generateVariation, nextVisualSeed, randomSeed } from './variation/generate';
 
 /** Milliseconds of mouse inactivity before the panel + cursor fade out. */
 const IDLE_TIMEOUT_MS = 3000;
@@ -42,9 +43,14 @@ async function toggleFullscreen(): Promise<void> {
 export function App(): React.ReactElement {
   const { settings, update, initialUiHidden, initialOverlayRaw, initialBlendRaw } = useSettings();
 
-  // Deterministic visual variation derived from the seed; recomputed only when
-  // the seed string changes.
-  const variation = useMemo(() => generateVariation(settings.seed), [settings.seed]);
+  // seed:set は Settings.seed だけ戻す。variation / 画は seed:gacha とパネル編集。
+  const adoptedSeedRef = useRef<string | null>(null);
+  const [visualSeed, setVisualSeed] = useState(settings.seed);
+  const variation = useMemo(() => generateVariation(visualSeed), [visualSeed]);
+
+  useEffect(() => {
+    setVisualSeed((cur) => nextVisualSeed(cur, settings.seed, adoptedSeedRef.current));
+  }, [settings.seed]);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const glCanvasRef = useRef<HTMLCanvasElement | null>(null);

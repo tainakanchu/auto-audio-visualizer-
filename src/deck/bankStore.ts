@@ -23,7 +23,7 @@ export interface DeckBankSnapshot {
   preset: TransitionPresetId;
   auto: { on: boolean; kind: AutoKind; order: AutoOrder; seconds: number; bars: number };
   cursor: number;
-  /** 保存時の main 側 seed（Settings.seed）。復元時に seed:set で戻す。旧データは無い */
+  /** 保存時の main 側 seed（Settings.seed）。seed:set は Settings のみ（画は変えない）。旧データは無い */
   mainSeed?: string;
 }
 

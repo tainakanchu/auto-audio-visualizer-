@@ -52,7 +52,7 @@ const DEFAULT_SETTINGS: Settings = {
 };
 
 /** Trim, cap length, and fall back to the default for empty/invalid seeds. */
-function sanitizeSeed(v: unknown): string {
+export function sanitizeSeed(v: unknown): string {
   if (typeof v !== 'string') return DEFAULT_SETTINGS.seed;
   const trimmed = v.trim().slice(0, SEED_MAX_LEN);
   return trimmed.length > 0 ? trimmed : DEFAULT_SETTINGS.seed;

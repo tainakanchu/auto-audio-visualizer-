@@ -318,6 +318,15 @@ export class Renderer {
     }
   }
 
+  /**
+   * Settings.seed だけ va.seed に合わせる。init / clear はしない（画を変えない）。
+   * hueOffset 等は据え置き。seed:gacha は {@link setVariation}。
+   */
+  adoptSeed(seed: string): void {
+    if (this.variation.seed === seed) return;
+    this.variation = { ...this.variation, seed };
+  }
+
   get activeSceneId(): string | null {
     return this.current?.id ?? null;
   }
