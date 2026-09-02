@@ -235,8 +235,8 @@ Scene Deck 窓だけで Web MIDI を受けます（メイン窓には載せま�
 バンク（BASE + V1…V7）は **base Patch と bankSeed** だけを保存します。8 面そのものは持たず、同じ入力なら `buildSceneBank` が同じ手札を再生成します。
 
 - **自動保存**: バンク / seed / トランジション / auto / カーソルが変わるたびに 500ms debounce で `localStorage` キー `vj-deck-banks-v1` の `current` を更新する（クラッシュ耐性）。Deck 起動時に `current` があれば **メイン窓の currentPatch を待たずに** 復元する。未保存なら従来どおり live から生成する
-- **A〜H**: ツールバーの小ボタン。クリックで呼び出し、`Shift+クリック` で保存（上書き確認なし）。空は薄く表示。右クリック / 長押しで名前を編集。呼び出しはバンクを差し替えるだけで **pad は自動では叩かない**（live の画は pad 1 などを押すまで変わらない）。`mainSeed` があり host が `seed:set` を受けられるときは **Settings.seed だけ**戻す（`derivePatch` しない。画を寄せるなら pad 1）
-- **JSON**: `JSON copy` でいまのスナップショットをクリップボードへ。テキストを貼って `JSON paste`。別 PC・別ブラウザへ持てる
+- **A〜H**: ツールバーの小ボタン。クリックで呼び出し、`Shift+クリック` で保存（上書き確認なし）。空は薄く表示。右クリック / 長押しで名前を編集。呼び出しはバンクを差し替えるだけで **pad は自動では叩かない**し **`seed:set` も送らない**（live の画は pad 1 などを押すまで変わらない）。menu の **seed を採用** を押すと `seed:set` が送られ、Settings.seed とメインの画の両方が作り直される
+- **JSON**: `JSON copy` でいまのスナップショットをクリップボードへ。`menu` 内のテキストエリアに貼って `JSON paste`。別 PC・別ブラウザへ持てる
 - **別 PC では画像が欠ける**: Patch は画像の hash 参照だけを持ち、ピクセルは同一オリジンの IndexedDB `vj-images` にある。別マシンへ JSON だけ持っていくとサンプラーは透明ダミーになる（スロットはラベルと detail で判別できる）
 - **STALE**: 復元した base が現行 catalog で invalid（generatorVersion の更新など）。バンクはフォールバック（バリエーションが全部 BASE 相当）で出すので落ちない。`R` で live から取り直す
 - **クリア**: menu 内の `clear current` → `confirm clear current`（2 段）。次回起動は live から生成する。A〜H は消さない

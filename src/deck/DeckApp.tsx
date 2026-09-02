@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { scenes } from '../scenes';
-import { createCatalog } from '../synth/catalog';
-import { allGeneratorDefinitions, inlineCatalog } from '../synth/generators';
+import { inlineCatalog } from '../synth/generators';
 import { serializePatch } from '../synth/schema';
 import type { TransitionPresetId, VisualPatch } from '../synth/types';
 import { randomSeed } from '../variation/generate';
@@ -30,14 +29,18 @@ import {
 } from './autoAdvance';
 import {
   BANK_SLOT_IDS,
+  BANK_STORAGE_KEY,
   emptyBankStore,
   isBankSnapshotStale,
   loadBankStore,
   makeBankSnapshot,
+  mergeBankStore,
   nextEmptySlot,
   parseBankSnapshot,
+  sameBankSnapshotContent,
   saveBankStore,
   type BankSlotId,
+  type BankStorePatch,
   type DeckBankSnapshot,
   type DeckBankStore,
 } from './bankStore';
@@ -52,7 +55,7 @@ import {
   type DeckSharedState,
 } from './protocol';
 import { createThumbRenderer, type ThumbRenderer } from './thumbs';
-import { buildSceneBank, SCENE_BANK_SIZE, type DeckScene } from './variations';
+import { buildSceneBank, DECK_META_CATALOG, SCENE_BANK_SIZE, type DeckScene } from './variations';
 
 const PRESET_CYCLE: TransitionPresetId[] = ['cut', 'default', 'slow'];
 const CONNECT_TIMEOUT_MS = 1500;
@@ -65,7 +68,7 @@ const GRID_ROWS = 2;
 const HUE_REDRAW_DEG = 12;
 const BANK_AUTOSAVE_MS = 500;
 const BANK_LONG_PRESS_MS = 500;
-const META_CATALOG = createCatalog(allGeneratorDefinitions());
+const BANK_EXPORT_OK_MS = 2000;
 
 function readDeckBankStore(): DeckBankStore {
   try {
@@ -258,31 +261,36 @@ export function DeckApp(): React.ReactElement {
   );
   const [bankBase, setBankBase] = useState<VisualPatch | null>(restored?.base ?? null);
   const [bankSeed, setBankSeed] = useState(restored?.bankSeed ?? '');
-  const restoredAuto = restored ? restoreAuto(restored) : null;
   const [preset, setPreset] = useState<TransitionPresetId>(restored?.preset ?? 'default');
   const [lastError, setLastError] = useState<string | null>(null);
   const [cursor, setCursor] = useState(restored ? clampBankCursor(restored.cursor) : 0);
   const [playhead, setPlayhead] = useState(0);
-  const [autoOn, setAutoOn] = useState(restoredAuto?.on ?? false);
-  const [autoKind, setAutoKind] = useState<AutoKind>(restoredAuto?.kind ?? 'seconds');
-  const [autoOrder, setAutoOrder] = useState<AutoOrder>(restoredAuto?.order ?? 'sequential');
-  const [autoSeconds, setAutoSeconds] = useState(restoredAuto?.seconds ?? AUTO_SECONDS_DEFAULT);
-  const [autoBars, setAutoBars] = useState(restoredAuto?.bars ?? AUTO_BARS_DEFAULT);
+  const [autoOn, setAutoOn] = useState(() => restored?.auto.on ?? false);
+  const [autoKind, setAutoKind] = useState<AutoKind>(() => restored?.auto.kind ?? 'seconds');
+  const [autoOrder, setAutoOrder] = useState<AutoOrder>(() => restored?.auto.order ?? 'sequential');
+  const [autoSeconds, setAutoSeconds] = useState(() =>
+    restored ? clampAutoSeconds(restored.auto.seconds) : AUTO_SECONDS_DEFAULT,
+  );
+  const [autoBars, setAutoBars] = useState(() =>
+    restored ? clampAutoBars(restored.auto.bars) : AUTO_BARS_DEFAULT,
+  );
   const [thumbUrls, setThumbUrls] = useState<Array<string | null>>([]);
   const [hueEpoch, setHueEpoch] = useState(0);
   const [hueEcho, setHueEcho] = useState<number | null>(null);
   const [slotMap, setSlotMap] = useState(initialStore.slots);
   const [activeSlotId, setActiveSlotId] = useState<BankSlotId | null>(null);
   const [bankStale, setBankStale] = useState(() =>
-    restored ? isBankSnapshotStale(restored, META_CATALOG) : false,
+    restored ? isBankSnapshotStale(restored, DECK_META_CATALOG) : false,
   );
   const [renamingSlot, setRenamingSlot] = useState<BankSlotId | null>(null);
   const [bankMenuOpen, setBankMenuOpen] = useState(false);
   const [clearArmed, setClearArmed] = useState(false);
   const [bankImport, setBankImport] = useState('');
   const [bankExportOk, setBankExportOk] = useState(false);
+  const [bankExportError, setBankExportError] = useState<string | null>(null);
   const [bankImportError, setBankImportError] = useState<string | null>(null);
   const [bankSaveWarning, setBankSaveWarning] = useState<string | null>(null);
+  const exportOkTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   bankRef.current = bank;
   sharedRef.current = shared;
@@ -297,7 +305,6 @@ export function DeckApp(): React.ReactElement {
   autoBarsRef.current = autoBars;
   pollMsRef.current = autoOn && autoKind === 'bars' ? POLL_BARS_MS : POLL_MS;
   hueRef.current = shared?.hue ?? 0;
-  if (shared?.app?.seed) lastMainSeedRef.current = shared.app.seed;
 
   const connected = shared !== null;
   const midi = useMidi({
@@ -367,6 +374,8 @@ export function DeckApp(): React.ReactElement {
     if (!live) return;
     const seed = randomSeed();
     clearedRef.current = false;
+    lastMainSeedRef.current = sharedRef.current?.app?.seed;
+    setAdoptSeed(undefined);
     setBankSeed(seed);
     setBankBase(live);
     setBank(buildSceneBank(live, seed, inlineCatalog));
@@ -379,6 +388,8 @@ export function DeckApp(): React.ReactElement {
     if (!base) return;
     const seed = randomSeed();
     clearedRef.current = false;
+    lastMainSeedRef.current = sharedRef.current?.app?.seed;
+    setAdoptSeed(undefined);
     setBankSeed(seed);
     setBank(buildSceneBank(base, seed, inlineCatalog));
     setActiveSlotId(null);
@@ -519,6 +530,7 @@ export function DeckApp(): React.ReactElement {
     const patch = shared?.currentPatch;
     if (!patch) return;
     const seed = randomSeed();
+    lastMainSeedRef.current = shared?.app?.seed;
     setBankSeed(seed);
     setBankBase(patch);
     setBank(buildSceneBank(patch, seed, inlineCatalog));
@@ -618,17 +630,29 @@ export function DeckApp(): React.ReactElement {
     [postRequest],
   );
 
-  const persistStore = useCallback((next: DeckBankStore): void => {
-    storeRef.current = next;
-    setSlotMap(next.slots);
-    setBankSaveWarning(writeDeckBankStore(next));
+  const persistStore = useCallback((patch: BankStorePatch): void => {
+    const latest = readDeckBankStore();
+    const disk = mergeBankStore(latest, patch);
+    const current = 'current' in patch ? patch.current : storeRef.current.current;
+    storeRef.current = { version: 1, current, slots: disk.slots };
+    setSlotMap(disk.slots);
+    setBankSaveWarning(writeDeckBankStore(disk));
   }, []);
+
+  const persistCurrentIfChanged = useCallback(
+    (snap: DeckBankSnapshot): void => {
+      const prev = storeRef.current.current;
+      if (prev !== null && sameBankSnapshotContent(prev, snap)) return;
+      persistStore({ current: snap });
+    },
+    [persistStore],
+  );
 
   const captureCurrent = useCallback((name = ''): DeckBankSnapshot | null => {
     const base = bankBaseRef.current;
     const seed = bankSeedRef.current;
     if (base === null || seed === '') return null;
-    const mainSeed = sharedRef.current?.app?.seed ?? lastMainSeedRef.current;
+    const mainSeed = lastMainSeedRef.current ?? sharedRef.current?.app?.seed;
     return makeBankSnapshot({
       name,
       base,
@@ -648,6 +672,7 @@ export function DeckApp(): React.ReactElement {
 
   const applySnapshot = useCallback((snap: DeckBankSnapshot): void => {
     const auto = restoreAuto(snap);
+    const slot = clampBankCursor(snap.cursor);
     clearedRef.current = false;
     setBankBase(snap.base);
     setBankSeed(snap.bankSeed);
@@ -658,16 +683,18 @@ export function DeckApp(): React.ReactElement {
     setAutoOrder(auto.order);
     setAutoSeconds(auto.seconds);
     setAutoBars(auto.bars);
-    setCursor(clampBankCursor(snap.cursor));
-    setBankStale(isBankSnapshotStale(snap, META_CATALOG));
+    setCursor(slot);
+    acceptedSlotRef.current = slot;
+    setPlayhead(slot);
+    setBankStale(isBankSnapshotStale(snap, DECK_META_CATALOG));
     lastMainSeedRef.current = snap.mainSeed;
     setAdoptSeed(snap.mainSeed);
   }, []);
 
   const captureCurrentRef = useRef(captureCurrent);
   captureCurrentRef.current = captureCurrent;
-  const persistStoreRef = useRef(persistStore);
-  persistStoreRef.current = persistStore;
+  const persistCurrentIfChangedRef = useRef(persistCurrentIfChanged);
+  persistCurrentIfChangedRef.current = persistCurrentIfChanged;
 
   const flushAutosave = useCallback((): void => {
     if (autosaveTimerRef.current === null) return;
@@ -676,7 +703,7 @@ export function DeckApp(): React.ReactElement {
     if (clearedRef.current) return;
     const snap = captureCurrentRef.current(storeRef.current.current?.name ?? '');
     if (snap === null) return;
-    persistStoreRef.current({ ...storeRef.current, current: snap });
+    persistCurrentIfChangedRef.current(snap);
   }, []);
 
   // bankBase が無い（未接続・未復元）ときは書かない。500ms debounce。
@@ -691,7 +718,7 @@ export function DeckApp(): React.ReactElement {
       if (clearedRef.current) return;
       const snap = captureCurrent(storeRef.current.current?.name ?? '');
       if (snap === null) return;
-      persistStore({ ...storeRef.current, current: snap });
+      persistCurrentIfChanged(snap);
     }, BANK_AUTOSAVE_MS);
   }, [
     bank,
@@ -706,7 +733,7 @@ export function DeckApp(): React.ReactElement {
     cursor,
     shared?.app?.seed,
     captureCurrent,
-    persistStore,
+    persistCurrentIfChanged,
   ]);
 
   useEffect(() => {
@@ -716,11 +743,24 @@ export function DeckApp(): React.ReactElement {
     const onVisibility = (): void => {
       if (document.visibilityState === 'hidden') flushAutosave();
     };
+    const onStorage = (e: StorageEvent): void => {
+      if (e.key !== BANK_STORAGE_KEY && e.key !== null) return;
+      const latest = readDeckBankStore();
+      storeRef.current = {
+        version: 1,
+        current: storeRef.current.current,
+        slots: latest.slots,
+      };
+      setSlotMap(latest.slots);
+    };
     window.addEventListener('pagehide', onPageHide);
     document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('storage', onStorage);
     return () => {
       window.removeEventListener('pagehide', onPageHide);
       document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('storage', onStorage);
+      if (exportOkTimerRef.current !== null) window.clearTimeout(exportOkTimerRef.current);
       flushAutosave();
     };
   }, [flushAutosave]);
@@ -731,11 +771,7 @@ export function DeckApp(): React.ReactElement {
       const snap = captureCurrent(prev?.name ?? '');
       if (snap === null) return;
       clearedRef.current = false;
-      persistStore({
-        ...storeRef.current,
-        current: snap,
-        slots: { ...storeRef.current.slots, [id]: snap },
-      });
+      persistStore({ current: snap, slot: { id, snap } });
       setActiveSlotId(id);
     },
     [captureCurrent, persistStore],
@@ -751,7 +787,7 @@ export function DeckApp(): React.ReactElement {
       const snap = storeRef.current.slots[id];
       if (!snap) return;
       applySnapshot(snap);
-      persistStore({ ...storeRef.current, current: snap });
+      persistStore({ current: snap });
       setActiveSlotId(id);
     },
     [applySnapshot, persistStore],
@@ -761,10 +797,7 @@ export function DeckApp(): React.ReactElement {
     (id: BankSlotId, name: string): void => {
       const snap = storeRef.current.slots[id];
       if (!snap) return;
-      persistStore({
-        ...storeRef.current,
-        slots: { ...storeRef.current.slots, [id]: { ...snap, name } },
-      });
+      persistStore({ slot: { id, snap: { ...snap, name } } });
     },
     [persistStore],
   );
@@ -775,7 +808,7 @@ export function DeckApp(): React.ReactElement {
       autosaveTimerRef.current = null;
     }
     clearedRef.current = true;
-    persistStore({ ...storeRef.current, current: null });
+    persistStore({ current: null });
     setClearArmed(false);
     setBankMenuOpen(false);
   }, [persistStore]);
@@ -787,14 +820,19 @@ export function DeckApp(): React.ReactElement {
 
   const exportCurrent = useCallback(async (): Promise<void> => {
     setBankExportOk(false);
+    setBankExportError(null);
     const snap = captureCurrent(storeRef.current.current?.name ?? '');
     if (snap === null) return;
     try {
       await navigator.clipboard.writeText(JSON.stringify(snap, null, 2));
       setBankExportOk(true);
-      setBankImportError(null);
+      if (exportOkTimerRef.current !== null) window.clearTimeout(exportOkTimerRef.current);
+      exportOkTimerRef.current = window.setTimeout(() => {
+        exportOkTimerRef.current = null;
+        setBankExportOk(false);
+      }, BANK_EXPORT_OK_MS);
     } catch {
-      setBankImportError('clipboard に書けませんでした');
+      setBankExportError('clipboard に書けませんでした');
     }
   }, [captureCurrent]);
 
@@ -814,7 +852,7 @@ export function DeckApp(): React.ReactElement {
         return;
       }
       applySnapshot(snap);
-      persistStore({ ...storeRef.current, current: snap });
+      persistStore({ current: snap });
       setActiveSlotId(null);
       setBankImportError(null);
     },
@@ -1019,6 +1057,7 @@ export function DeckApp(): React.ReactElement {
                     if (e.key === 'Escape') {
                       e.preventDefault();
                       skipRenameBlurRef.current = true;
+                      e.currentTarget.blur();
                       setRenamingSlot(null);
                     }
                   }}
@@ -1099,9 +1138,6 @@ export function DeckApp(): React.ReactElement {
           >
             {bankExportOk ? 'copied' : 'JSON copy'}
           </button>
-          <button type="button" className="btn" onClick={() => importSnapshotText(bankImport)}>
-            JSON paste
-          </button>
           <button
             type="button"
             className={`btn toggle${bankMenuOpen ? ' on' : ''}`}
@@ -1114,29 +1150,39 @@ export function DeckApp(): React.ReactElement {
           </button>
         </div>
         {bankMenuOpen ? (
-          <div className="deck-banks-row">
-            <button type="button" className="btn" disabled={!adoptSeed} onClick={adoptMainSeed}>
-              seed を採用
-            </button>
-            {clearArmed ? (
-              <button type="button" className="btn" onClick={clearCurrent}>
-                confirm clear current
+          <>
+            <div className="deck-banks-row">
+              <button
+                type="button"
+                className="btn"
+                disabled={!consoleEnabled || !adoptSeed}
+                onClick={adoptMainSeed}
+              >
+                {adoptSeed ? `seed を採用: ${adoptSeed}` : 'seed を採用'}
               </button>
-            ) : (
-              <button type="button" className="btn" onClick={() => setClearArmed(true)}>
-                clear current
+              {clearArmed ? (
+                <button type="button" className="btn" onClick={clearCurrent}>
+                  confirm clear current
+                </button>
+              ) : (
+                <button type="button" className="btn" onClick={() => setClearArmed(true)}>
+                  clear current
+                </button>
+              )}
+              <button type="button" className="btn" onClick={() => importSnapshotText(bankImport)}>
+                JSON paste
               </button>
-            )}
-          </div>
+            </div>
+            <textarea
+              className="deck-bank-json"
+              rows={2}
+              value={bankImport}
+              onChange={(e) => setBankImport(e.target.value)}
+              placeholder='{"version":1,"name":"","base":…}'
+              aria-label="Bank snapshot JSON"
+            />
+          </>
         ) : null}
-        <textarea
-          className="deck-bank-json"
-          rows={2}
-          value={bankImport}
-          onChange={(e) => setBankImport(e.target.value)}
-          placeholder='{"version":1,"name":"","base":…}'
-          aria-label="Bank snapshot JSON"
-        />
       </div>
 
       <div className="deck-midi">
@@ -1463,6 +1509,7 @@ export function DeckApp(): React.ReactElement {
       ) : null}
       {baseChanged ? <div className="deck-banner warn">BASE CHANGED — R で再生成</div> : null}
       {bankSaveWarning ? <div className="deck-banner warn">{bankSaveWarning}</div> : null}
+      {bankExportError ? <div className="deck-banner warn">{bankExportError}</div> : null}
       {bankImportError ? <div className="deck-banner warn">{bankImportError}</div> : null}
       {waitingForTempo ? (
         <div className="deck-banner warn">bars オートは tempo LOCK が必要です — 待機中</div>

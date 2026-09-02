@@ -10,9 +10,11 @@ import {
   isBankSnapshotStale,
   loadBankStore,
   makeBankSnapshot,
+  mergeBankStore,
   nextEmptySlot,
   parseBankSnapshot,
   parseBankStore,
+  sameBankSnapshotContent,
   saveBankStore,
   type DeckBankSnapshot,
   type DeckBankStore,
@@ -118,7 +120,7 @@ describe('parseBankSnapshot', () => {
     expect(serializePatch(parsed!.base)).toBe(serializePatch(snap.base));
   });
 
-  it('rejects old version, bad patch, and malformed auto', () => {
+  it('rejects old version, bad patch, empty bankSeed, and malformed fields', () => {
     const raw = JSON.parse(JSON.stringify(sampleSnapshot())) as Record<string, unknown>;
     expect(parseBankSnapshot({ ...raw, version: 2 })).toBeNull();
     expect(parseBankSnapshot({ ...raw, version: 0 })).toBeNull();
@@ -126,6 +128,10 @@ describe('parseBankSnapshot', () => {
     expect(parseBankSnapshot({ ...raw, preset: 'wipe' })).toBeNull();
     expect(parseBankSnapshot({ ...raw, auto: { on: true } })).toBeNull();
     expect(parseBankSnapshot({ ...raw, bankSeed: 12 })).toBeNull();
+    expect(parseBankSnapshot({ ...raw, bankSeed: '' })).toBeNull();
+    expect(parseBankSnapshot({ ...raw, name: 1 })).toBeNull();
+    expect(parseBankSnapshot({ ...raw, cursor: '3' })).toBeNull();
+    expect(parseBankSnapshot({ ...raw, cursor: Number.NaN })).toBeNull();
     expect(parseBankSnapshot('nope')).toBeNull();
   });
 
@@ -163,6 +169,16 @@ describe('parseBankStore', () => {
     expect(parsed.slots.A?.name).toBe('A');
     expect(parsed.slots.B).toBeUndefined();
     expect((parsed.slots as Record<string, unknown>).Z).toBeUndefined();
+  });
+
+  it('drops current when bankSeed is empty', () => {
+    const parsed = parseBankStore({
+      version: 1,
+      current: { ...sampleSnapshot(), bankSeed: '' },
+      slots: { A: sampleSnapshot({ name: 'A' }) },
+    });
+    expect(parsed.current).toBeNull();
+    expect(parsed.slots.A?.name).toBe('A');
   });
 });
 
@@ -219,6 +235,18 @@ describe('loadBankStore / saveBankStore', () => {
     ).toEqual(emptyBankStore());
   });
 
+  it('writes only version, current, and slots', () => {
+    const storage = mapStorage();
+    expect(BANK_STORAGE_KEY).toBe('vj-deck-banks-v1');
+    saveBankStore(storage, {
+      version: 1,
+      current: sampleSnapshot(),
+      slots: { A: sampleSnapshot({ name: 'set A' }) },
+    });
+    const parsed = JSON.parse(storage.getItem(BANK_STORAGE_KEY)!) as Record<string, unknown>;
+    expect(Object.keys(parsed).sort()).toEqual(['current', 'slots', 'version']);
+  });
+
   it('swallows setItem throws and returns a warning', () => {
     const storage = mapStorage(undefined, {
       setItem() {
@@ -232,6 +260,37 @@ describe('loadBankStore / saveBankStore', () => {
     });
     expect(result.warning).toEqual(expect.any(String));
     expect(result.warning).not.toBeNull();
+  });
+});
+
+describe('sameBankSnapshotContent', () => {
+  it('ignores savedAt and compares the rest', () => {
+    const a = sampleSnapshot({ savedAt: '2026-09-01T00:00:00.000Z' });
+    const b = sampleSnapshot({ savedAt: '2026-09-02T00:00:00.000Z' });
+    expect(sameBankSnapshotContent(a, b)).toBe(true);
+    expect(sameBankSnapshotContent(a, sampleSnapshot({ cursor: 4 }))).toBe(false);
+    expect(sameBankSnapshotContent(a, sampleSnapshot({ name: 'other' }))).toBe(false);
+  });
+});
+
+describe('mergeBankStore', () => {
+  it('overlays one slot and optional current without dropping neighbors', () => {
+    const latest: DeckBankStore = {
+      version: 1,
+      current: sampleSnapshot({ name: 'live' }),
+      slots: { A: sampleSnapshot({ name: 'A' }), C: sampleSnapshot({ name: 'C' }) },
+    };
+    const slotted = mergeBankStore(latest, {
+      slot: { id: 'B', snap: sampleSnapshot({ name: 'B' }) },
+    });
+    expect(slotted.current?.name).toBe('live');
+    expect(slotted.slots.A?.name).toBe('A');
+    expect(slotted.slots.B?.name).toBe('B');
+    expect(slotted.slots.C?.name).toBe('C');
+
+    const cleared = mergeBankStore(latest, { current: null });
+    expect(cleared.current).toBeNull();
+    expect(cleared.slots.A?.name).toBe('A');
   });
 });
 

@@ -3,7 +3,7 @@
  * Storage は注入する（このモジュールは localStorage を直接触らない）。
  */
 import type { GeneratorCatalog } from '../synth/catalog';
-import { parsePatch } from '../synth/schema';
+import { parsePatch, serializePatch } from '../synth/schema';
 import type { TransitionPresetId, VisualPatch } from '../synth/types';
 import { validatePatch } from '../synth/validate';
 import type { AutoKind, AutoOrder } from './autoAdvance';
@@ -23,9 +23,13 @@ export interface DeckBankSnapshot {
   preset: TransitionPresetId;
   auto: { on: boolean; kind: AutoKind; order: AutoOrder; seconds: number; bars: number };
   cursor: number;
-  /** 保存時の main 側 seed（Settings.seed）。seed:set は Settings のみ（画は変えない）。旧データは無い */
+  /** 保存時の main 側 Settings.seed。呼び出しでは送らず、明示の「seed を採用」で seed:set する */
   mainSeed?: string;
 }
+
+export type BankStorePatch =
+  | { current: DeckBankSnapshot | null; slot?: { id: BankSlotId; snap: DeckBankSnapshot } }
+  | { slot: { id: BankSlotId; snap: DeckBankSnapshot } };
 
 export interface DeckBankStore {
   version: 1;
@@ -84,7 +88,7 @@ export function parseBankSnapshot(input: unknown): DeckBankSnapshot | null {
   if (input.version !== 1) return null;
   if (typeof input.name !== 'string') return null;
   if (typeof input.savedAt !== 'string') return null;
-  if (typeof input.bankSeed !== 'string') return null;
+  if (typeof input.bankSeed !== 'string' || input.bankSeed === '') return null;
   const preset = parsePreset(input.preset);
   if (preset === null) return null;
   const auto = parseAuto(input.auto);
@@ -166,6 +170,34 @@ export function isBankSnapshotStale(
   catalog: GeneratorCatalog,
 ): boolean {
   return validatePatch(snapshot.base, catalog).length > 0;
+}
+
+/** savedAt 以外が同じなら、復元直後の自動保存で timestamp を書き換えない。 */
+export function sameBankSnapshotContent(a: DeckBankSnapshot, b: DeckBankSnapshot): boolean {
+  return (
+    a.name === b.name &&
+    a.bankSeed === b.bankSeed &&
+    a.preset === b.preset &&
+    a.cursor === b.cursor &&
+    a.mainSeed === b.mainSeed &&
+    a.auto.on === b.auto.on &&
+    a.auto.kind === b.auto.kind &&
+    a.auto.order === b.auto.order &&
+    a.auto.seconds === b.auto.seconds &&
+    a.auto.bars === b.auto.bars &&
+    serializePatch(a.base) === serializePatch(b.base)
+  );
+}
+
+/** 他タブの slots を残しつつ、このタブの current / 1 スロットだけ載せる。 */
+export function mergeBankStore(latest: DeckBankStore, patch: BankStorePatch): DeckBankStore {
+  const slots: DeckBankStore['slots'] = { ...latest.slots };
+  if (patch.slot) slots[patch.slot.id] = patch.slot.snap;
+  return {
+    version: 1,
+    current: 'current' in patch ? patch.current : latest.current,
+    slots,
+  };
 }
 
 function parseAuto(input: unknown): DeckBankSnapshot['auto'] | null {
