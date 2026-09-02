@@ -8,12 +8,17 @@ import {
   dispatchDeckAction,
   keyToAction,
   wrapHue,
+  type DeckAction,
   type DeckActionContext,
   type DeckKeyView,
 } from './actions';
 import {
   AUTO_BARS_DEFAULT,
+  AUTO_BARS_MAX,
+  AUTO_BARS_MIN,
   AUTO_SECONDS_DEFAULT,
+  AUTO_SECONDS_MAX,
+  AUTO_SECONDS_MIN,
   AUTO_SECONDS_STEP,
   clampAutoBars,
   clampAutoSeconds,
@@ -23,6 +28,8 @@ import {
   type AutoOrder,
 } from './autoAdvance';
 import { circularHueDelta } from './hue';
+import { formatMidiTrigger } from './midi';
+import { useMidi } from './useMidi';
 import {
   DECK_CHANNEL,
   parseDeckResponse,
@@ -129,6 +136,10 @@ function withSyncSeed(command: DeckCommand): DeckCommand {
   return command;
 }
 
+function actionKey(action: DeckAction): string {
+  return JSON.stringify(action);
+}
+
 function formatAutoStatus(
   autoOn: boolean,
   kind: AutoKind,
@@ -163,6 +174,12 @@ export function DeckApp(): React.ReactElement {
   // host が最後に受理したスロット。楽観更新した playhead の巻き戻し先。
   const acceptedSlotRef = useRef(0);
 
+  const midiDispatch = useCallback((action: DeckAction): void => {
+    const ctx = ctxRef.current;
+    if (ctx) dispatchDeckAction(action, ctx);
+  }, []);
+  const [midiImport, setMidiImport] = useState('');
+
   const [shared, setShared] = useState<DeckSharedState | null>(null);
   const [missingHost, setMissingHost] = useState(false);
   const [bank, setBank] = useState<DeckScene[] | null>(null);
@@ -187,6 +204,16 @@ export function DeckApp(): React.ReactElement {
   pollMsRef.current = autoOn && autoKind === 'bars' ? POLL_BARS_MS : POLL_MS;
   hueRef.current = shared?.hue ?? 0;
 
+  const connected = shared !== null;
+  const midi = useMidi({
+    dispatch: midiDispatch,
+    leds: {
+      conn: connected,
+      auto: autoOn,
+      tempoLock: shared?.tempoLocked ?? false,
+    },
+  });
+
   const postRequest = useCallback((req: DeckRequest): void => {
     channelRef.current?.postMessage(req);
   }, []);
@@ -204,7 +231,6 @@ export function DeckApp(): React.ReactElement {
     [postRequest],
   );
 
-  const connected = shared !== null;
   const autoMode: AutoMode = autoOn ? autoKind : 'off';
 
   const onAdvance = useCallback(
@@ -266,6 +292,20 @@ export function DeckApp(): React.ReactElement {
         );
       } else {
         setAutoBars((b) => clampAutoBars(b + dir));
+      }
+    },
+    [autoKind],
+  );
+
+  const setIntervalAbs = useCallback(
+    (value01: number): void => {
+      const t = Number.isFinite(value01) ? Math.min(1, Math.max(0, value01)) : 0;
+      if (autoKind === 'seconds') {
+        const ratio = AUTO_SECONDS_MAX / AUTO_SECONDS_MIN;
+        setAutoSeconds(clampAutoSeconds(AUTO_SECONDS_MIN * ratio ** t));
+      } else {
+        const ratio = AUTO_BARS_MAX / AUTO_BARS_MIN;
+        setAutoBars(clampAutoBars(AUTO_BARS_MIN * ratio ** t));
       }
     },
     [autoKind],
@@ -503,6 +543,7 @@ export function DeckApp(): React.ReactElement {
       setAutoKind((kind) => (kind === 'seconds' ? 'bars' : 'seconds'));
     },
     bumpInterval,
+    setIntervalAbs,
     rebuildBank: rebuildFromLive,
     gachaBank,
     postCommand,
@@ -523,10 +564,19 @@ export function DeckApp(): React.ReactElement {
         }
       : null;
   viewRef.current = keyView;
+  const midiLearningRef = useRef(midi.learning);
+  midiLearningRef.current = midi.learning;
+  const midiEndLearnRef = useRef(midi.endLearn);
+  midiEndLearnRef.current = midi.endLearn;
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent): void => {
       if (isEditableTarget(e.target) || e.metaKey || e.ctrlKey || e.altKey) return;
+      if (e.code === 'Escape' && midiLearningRef.current) {
+        e.preventDefault();
+        midiEndLearnRef.current();
+        return;
+      }
       if (e.code === 'KeyF') {
         e.preventDefault();
         void toggleFullscreen();
@@ -605,8 +655,135 @@ export function DeckApp(): React.ReactElement {
           <button type="button" className="btn" onClick={gachaBank} disabled={bankBase === null}>
             G gacha
           </button>
+          <button
+            type="button"
+            className={`btn toggle${midi.status === 'on' ? ' on' : ''}`}
+            disabled={midi.status === 'unsupported' || midi.status === 'on'}
+            onClick={() => void midi.enable()}
+          >
+            {midi.status === 'unsupported'
+              ? 'MIDI 非対応'
+              : midi.status === 'on'
+                ? 'MIDI on'
+                : midi.status === 'denied'
+                  ? 'MIDI retry'
+                  : 'MIDI'}
+          </button>
+          <button
+            type="button"
+            className={`btn toggle${midi.learning ? ' on' : ''}`}
+            disabled={midi.status !== 'on'}
+            onClick={midi.toggleLearn}
+          >
+            learn
+          </button>
         </div>
       </header>
+
+      <div className="deck-midi">
+        <div className="deck-midi-row">
+          <span className="deck-midi-label">MIDI</span>
+          {midi.status === 'unsupported' ? (
+            <span className="deck-midi-unsupported">MIDI 非対応</span>
+          ) : (
+            <>
+              {midi.native ? <span className="deck-midi-badge">native</span> : null}
+              {midi.dumpMapped && !midi.native ? (
+                <span className="deck-midi-badge">dump</span>
+              ) : null}
+              {midi.status === 'on' && !midi.sysex ? (
+                <span className="deck-midi-unsupported">SysEx なし</span>
+              ) : null}
+              <label className="deck-midi-name">
+                <input
+                  type="text"
+                  value={midi.mapping.name}
+                  onChange={(e) => midi.setMappingName(e.target.value)}
+                  aria-label="MIDI mapping name"
+                />
+              </label>
+              <label className="deck-midi-check">
+                <input
+                  type="checkbox"
+                  checked={midi.preferNative}
+                  onChange={(e) => midi.setPreferNative(e.target.checked)}
+                />
+                Native
+              </label>
+              <label className="deck-midi-check">
+                <input
+                  type="checkbox"
+                  checked={midi.swapRows}
+                  onChange={(e) => midi.setSwapRows(e.target.checked)}
+                />
+                上下入替
+              </label>
+              <label className="deck-midi-cut">
+                cut ≥
+                <input
+                  type="number"
+                  min={1}
+                  max={127}
+                  placeholder="off"
+                  value={midi.velocityCutThreshold ?? ''}
+                  onChange={(e) => {
+                    const raw = e.target.value;
+                    if (raw === '') {
+                      midi.setVelocityCutThreshold(null);
+                      return;
+                    }
+                    const n = Number(raw);
+                    if (!Number.isInteger(n)) return;
+                    midi.setVelocityCutThreshold(Math.min(127, Math.max(1, n)));
+                  }}
+                  aria-label="Velocity cut threshold"
+                />
+              </label>
+              <button type="button" className="btn" onClick={() => void midi.exportToClipboard()}>
+                {midi.exportOk ? 'copied' : 'export'}
+              </button>
+              <button type="button" className="btn" onClick={() => midi.importFromText(midiImport)}>
+                import
+              </button>
+            </>
+          )}
+        </div>
+        {midi.status === 'on' ? (
+          <div className="deck-midi-devices">
+            {midi.devices.length === 0 ? 'no inputs' : midi.devices.map((d) => d.name).join(' · ')}
+          </div>
+        ) : null}
+        {midi.status !== 'unsupported' ? (
+          <>
+            <div className="deck-midi-actions">
+              {midi.learnItems.map((item, i) => {
+                const bound = midi.mapping.bindings.find(
+                  (b) => actionKey(b.action) === actionKey(item.action),
+                );
+                return (
+                  <button
+                    key={item.id}
+                    type="button"
+                    className={`btn deck-midi-action${midi.learnIndex === i ? ' toggle on' : ''}${bound ? ' bound' : ''}`}
+                    onClick={() => midi.setLearnIndex(i)}
+                  >
+                    {item.label}
+                    {bound ? ` · ${formatMidiTrigger(bound.trigger)}` : ''}
+                  </button>
+                );
+              })}
+            </div>
+            <textarea
+              className="deck-midi-json"
+              rows={3}
+              value={midiImport}
+              onChange={(e) => setMidiImport(e.target.value)}
+              placeholder='{"version":1,"name":"…","bindings":[]}'
+              aria-label="MIDI mapping JSON"
+            />
+          </>
+        ) : null}
+      </div>
 
       <div className="deck-console">
         <button
@@ -811,6 +988,14 @@ export function DeckApp(): React.ReactElement {
           auto{' '}
           <strong>{formatAutoStatus(autoOn, autoKind, autoOrder, autoSeconds, autoBars)}</strong>
         </span>
+        <span>
+          midi{' '}
+          <strong>
+            {midi.status === 'on' ? 'on' : midi.status === 'unsupported' ? 'n/a' : 'off'}
+            {midi.native ? ' · native' : midi.dumpMapped ? ' · dump' : ''}
+            {midi.learning ? ' · learn' : ''}
+          </strong>
+        </span>
       </div>
 
       {banner ? <div className="deck-banner warn">{banner}</div> : null}
@@ -819,6 +1004,18 @@ export function DeckApp(): React.ReactElement {
         <div className="deck-banner warn">bars オートは tempo LOCK が必要です — 待機中</div>
       ) : null}
       {lastError ? <div className="deck-banner warn">{lastError}</div> : null}
+      {midi.pad1Confirm ? <div className="deck-banner">pad 1 を叩いて確認してください</div> : null}
+      {midi.mismatch ? (
+        <div className="deck-banner warn">
+          ズレています。learn しますか
+          <button type="button" className="btn" onClick={midi.startLearnFromMismatch}>
+            learn
+          </button>
+        </div>
+      ) : null}
+      {midi.learnWarning ? <div className="deck-banner warn">{midi.learnWarning}</div> : null}
+      {midi.importError ? <div className="deck-banner warn">{midi.importError}</div> : null}
+      {midi.exportError ? <div className="deck-banner warn">{midi.exportError}</div> : null}
 
       {bank ? (
         <div className="deck-grid">

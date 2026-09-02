@@ -134,7 +134,7 @@ export function parseDeckResponse(msg: unknown): DeckResponse | null {
   return { kind: 'deck:state', state };
 }
 
-function parseDeckCommand(input: unknown): DeckCommand | null {
+export function parseDeckCommand(input: unknown): DeckCommand | null {
   if (!isRecord(input)) return null;
   switch (input.kind) {
     case 'seed:gacha':
