@@ -118,13 +118,10 @@ function moveGridCursor(slot: number, code: string, size: number): number {
   return next >= size ? bounded : next;
 }
 
-/** Mirror 窓と seed を揃える。gacha / reroll は Deck 側で seed を決めて送る。 */
+/** Mirror 窓と seed を揃える。残っている seed:gacha も Deck 側で seed を決めて送る。 */
 function withSyncSeed(command: DeckCommand): DeckCommand {
   if (command.kind === 'seed:gacha') {
     return { kind: 'seed:set', seed: randomSeed() };
-  }
-  if (command.kind === 'patch:rerollDetails' && command.seed === undefined) {
-    return { kind: 'patch:rerollDetails', seed: randomSeed() };
   }
   return command;
 }
@@ -178,7 +175,7 @@ export function DeckApp(): React.ReactElement {
   const [autoBars, setAutoBars] = useState(AUTO_BARS_DEFAULT);
   const [thumbUrls, setThumbUrls] = useState<Array<string | null>>([]);
   const [hueEpoch, setHueEpoch] = useState(0);
-  const [hueEcho, setHueEcho] = useState<number | null>(null);
+  const [hueDrag, setHueDrag] = useState<number | null>(null);
 
   bankRef.current = bank;
   sharedRef.current = shared;
@@ -563,7 +560,7 @@ export function DeckApp(): React.ReactElement {
           <div className="deck-title">Scene Deck</div>
           <div className="deck-sub">
             1–8 ポン出し · Shift+数字 cut · ←↑↓→ カーソル · Shift+←→ シーン · Enter/Space 決定 · T
-            tap · , ÷2 · . ×2 · / AUTO · X 遷移 · Q ガチャ · W 細部 · A auto · Shift+A autocycle · R
+            tap · , ÷2 · . ×2 · / AUTO · X 遷移 · Q ガチャ · W 細部 · A auto · Shift+A main auto · R
             再生成 · G バンク
           </div>
         </div>
@@ -613,7 +610,7 @@ export function DeckApp(): React.ReactElement {
           type="button"
           className="btn"
           disabled={!consoleEnabled}
-          onClick={() => postCommand({ kind: 'seed:gacha' })}
+          onClick={() => postCommand({ kind: 'seed:set', seed: randomSeed() })}
         >
           Q gacha
         </button>
@@ -621,7 +618,7 @@ export function DeckApp(): React.ReactElement {
           type="button"
           className="btn"
           disabled={!consoleEnabled}
-          onClick={() => postCommand({ kind: 'patch:rerollDetails' })}
+          onClick={() => postCommand({ kind: 'patch:rerollDetails', seed: randomSeed() })}
         >
           W details
         </button>
@@ -682,20 +679,20 @@ export function DeckApp(): React.ReactElement {
             max={360}
             step={1}
             disabled={!consoleEnabled}
-            value={hueEcho ?? hueSliderValue}
+            value={hueDrag ?? hueSliderValue}
             aria-label="Hue"
             onChange={(e) => {
               const hue = Number(e.target.value);
-              setHueEcho(hue);
+              setHueDrag(hue);
               postCommand({ kind: 'hue:fixed', hue });
             }}
             onPointerUp={(e) => {
-              setHueEcho(null);
               e.currentTarget.blur();
+              setHueDrag(null);
             }}
             onPointerCancel={(e) => {
-              setHueEcho(null);
               e.currentTarget.blur();
+              setHueDrag(null);
             }}
           />
         </label>
@@ -746,7 +743,7 @@ export function DeckApp(): React.ReactElement {
           title="Auto-detect tempo"
           onClick={() => postCommand({ kind: 'tempo:auto' })}
         >
-          AUTO
+          tempo AUTO
         </button>
         <button
           type="button"
@@ -758,7 +755,7 @@ export function DeckApp(): React.ReactElement {
             postCommand({ kind: 'autoCycle:set', on: !app.autoCycle });
           }}
         >
-          autocycle
+          main auto
         </button>
         <button
           type="button"

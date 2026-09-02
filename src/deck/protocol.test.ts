@@ -160,7 +160,6 @@ describe('parseDeckRequest', () => {
     const goods: DeckCommand[] = [
       { kind: 'seed:gacha' },
       { kind: 'seed:set', seed: 'neon-tiger-042' },
-      { kind: 'patch:rerollDetails' },
       { kind: 'patch:rerollDetails', seed: 'neon-tiger-042' },
       { kind: 'scene:set', sceneId: 'bars' },
       { kind: 'scene:shift', delta: 1 },
@@ -207,6 +206,7 @@ describe('parseDeckRequest', () => {
     const bads: unknown[] = [
       { kind: 'seed:set' },
       { kind: 'seed:set', seed: 12 },
+      { kind: 'patch:rerollDetails' },
       { kind: 'patch:rerollDetails', seed: 12 },
       { kind: 'scene:set' },
       { kind: 'scene:set', sceneId: 0 },
@@ -413,7 +413,7 @@ describe('parseDeckResponse', () => {
     });
   });
 
-  it('defaults missing baseHue to fixedHue (legacy host)', () => {
+  it('rejects missing or non-finite baseHue', () => {
     const app = sampleApp();
     const withoutBase = {
       sceneId: app.sceneId,
@@ -426,14 +426,18 @@ describe('parseDeckResponse', () => {
       tempoLocked: app.tempoLocked,
       audioRunning: app.audioRunning,
     };
-    const parsed = parseDeckResponse({
-      kind: 'deck:state',
-      state: { ...sampleState(), app: withoutBase },
-    } as unknown);
-    expect(parsed).not.toBeNull();
-    if (parsed?.kind === 'deck:state') {
-      expect(parsed.state.app?.baseHue).toBe(app.fixedHue);
-    }
+    expect(
+      parseDeckResponse({
+        kind: 'deck:state',
+        state: { ...sampleState(), app: withoutBase },
+      } as unknown),
+    ).toBeNull();
+    expect(
+      parseDeckResponse({
+        kind: 'deck:state',
+        state: { ...sampleState(), app: { ...sampleApp(), baseHue: Number.NaN } },
+      }),
+    ).toBeNull();
   });
 
   it('keeps app undefined when the field is missing (legacy host)', () => {

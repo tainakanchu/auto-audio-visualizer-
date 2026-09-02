@@ -4,6 +4,7 @@
  * keyToAction は純関数。トグル系（hue / bg / lock / autoCycle）だけは
  * 現在の App 表示が要るので第 2 引数を見る。無い（旧 host）ときは null。
  */
+import { randomSeed } from '../variation/generate';
 import type { DeckCommand } from './protocol';
 
 export type DeckAction =
@@ -95,10 +96,10 @@ export function keyToAction(e: KeyboardEvent, view?: DeckKeyView | null): DeckAc
       return { type: 'command', command: { kind: 'tempo:auto' } };
     case 'KeyQ':
       if (e.repeat) return null;
-      return { type: 'command', command: { kind: 'seed:gacha' } };
+      return { type: 'command', command: { kind: 'seed:set', seed: randomSeed() } };
     case 'KeyW':
       if (e.repeat) return null;
-      return { type: 'command', command: { kind: 'patch:rerollDetails' } };
+      return { type: 'command', command: { kind: 'patch:rerollDetails', seed: randomSeed() } };
     case 'KeyB': {
       if (e.repeat || !view) return null;
       return {

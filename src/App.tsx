@@ -14,7 +14,7 @@ import { resolveBlendMode } from './ui/blend';
 import { ControlPanel } from './ui/ControlPanel';
 import { resolveOverlaySceneId } from './ui/overlay';
 import { TimelinePanel } from './ui/TimelinePanel';
-import { useSettings } from './ui/useSettings';
+import { sanitizeSettings, useSettings } from './ui/useSettings';
 import type { Settings } from './ui/useSettings';
 import { generateVariation, randomSeed } from './variation/generate';
 
@@ -61,16 +61,9 @@ export function App(): React.ReactElement {
   // Host snapshots settingsRef on the same tick as runCommand. Write the ref
   // before React's setState so deck:state after a command is not stale.
   const applyUpdate = useCallback(
-    (patch: Partial<Settings>) => {
-      const next: Partial<Settings> = { ...patch };
-      if (next.fixedHue !== undefined) {
-        const hue = next.fixedHue;
-        next.fixedHue = Number.isFinite(hue)
-          ? Math.min(360, Math.max(0, hue))
-          : settingsRef.current.fixedHue;
-      }
-      settingsRef.current = { ...settingsRef.current, ...next };
-      update(next);
+    (patch: Partial<Settings>): void => {
+      settingsRef.current = sanitizeSettings({ ...settingsRef.current, ...patch });
+      update(patch);
     },
     [update],
   );

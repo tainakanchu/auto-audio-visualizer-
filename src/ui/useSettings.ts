@@ -153,7 +153,7 @@ function readUrl(): UrlConfig {
   return { overrides, uiHidden, overlayRaw, blendRaw };
 }
 
-function sanitize(s: Settings): Settings {
+export function sanitizeSettings(s: Settings): Settings {
   return {
     sceneId: typeof s.sceneId === 'string' && s.sceneId ? s.sceneId : DEFAULT_SETTINGS.sceneId,
     gain: clampNum(s.gain, 0.5, 4, DEFAULT_SETTINGS.gain),
@@ -205,7 +205,7 @@ export function useSettings(): UseSettingsResult {
   const url = urlRef.current;
 
   const [settings, setSettings] = useState<Settings>(() =>
-    sanitize({ ...DEFAULT_SETTINGS, ...loadStored(), ...url.overrides }),
+    sanitizeSettings({ ...DEFAULT_SETTINGS, ...loadStored(), ...url.overrides }),
   );
 
   // Persist on every change.
@@ -218,7 +218,7 @@ export function useSettings(): UseSettingsResult {
   }, [settings]);
 
   const update = useCallback((patch: Partial<Settings>) => {
-    setSettings((prev) => sanitize({ ...prev, ...patch }));
+    setSettings((prev) => sanitizeSettings({ ...prev, ...patch }));
   }, []);
 
   return {

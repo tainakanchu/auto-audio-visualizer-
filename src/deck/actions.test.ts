@@ -72,14 +72,6 @@ describe('keyToAction', () => {
       type: 'command',
       command: { kind: 'tempo:auto' },
     });
-    expect(keyToAction(evt('KeyQ'))).toEqual({
-      type: 'command',
-      command: { kind: 'seed:gacha' },
-    });
-    expect(keyToAction(evt('KeyW'))).toEqual({
-      type: 'command',
-      command: { kind: 'patch:rerollDetails' },
-    });
     expect(keyToAction(evt('KeyB'), view)).toEqual({
       type: 'command',
       command: { kind: 'background:set', background: 'transparent' },
@@ -120,6 +112,24 @@ describe('keyToAction', () => {
       type: 'command',
       command: { kind: 'autoCycle:set', on: false },
     });
+  });
+
+  it('Q sends seed:set with a generated seed', () => {
+    const action = keyToAction(evt('KeyQ'));
+    expect(action?.type).toBe('command');
+    if (action?.type !== 'command') return;
+    expect(action.command.kind).toBe('seed:set');
+    if (action.command.kind !== 'seed:set') return;
+    expect(action.command.seed.length).toBeGreaterThan(0);
+  });
+
+  it('W sends patch:rerollDetails with a generated seed', () => {
+    const action = keyToAction(evt('KeyW'));
+    expect(action?.type).toBe('command');
+    if (action?.type !== 'command') return;
+    expect(action.command.kind).toBe('patch:rerollDetails');
+    if (action.command.kind !== 'patch:rerollDetails') return;
+    expect(action.command.seed.length).toBeGreaterThan(0);
   });
 
   it('ignores key-repeat for tempo multiply/auto but allows hue sweep', () => {
