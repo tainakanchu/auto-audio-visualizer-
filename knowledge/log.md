@@ -5,6 +5,10 @@ title: knowledge バンドルの更新履歴
 
 # Bundle history
 
+## 2026-09-20
+
+- **Update**: [jev-system-one-model](jev-system-one-model.md) を追加(TypeSafe AI の Jev の仕様・制限・アクセス経路と、このリポジトリのシーン作成工程への適用可否)。tags.yml に `llm` を追加。
+
 ## 2026-09-02
 
 - **Creation**: `knowledge/` バンドルを作成し、OKF v0.2 での記録を開始した。

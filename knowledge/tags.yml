@@ -12,3 +12,6 @@ tags:
   - name: deck
     category: domain
     description: deck・外部制御まわり
+  - name: llm
+    category: technology
+    description: LLM・判断モデルなど AI モデルを制作パイプライン(vj-director / vj-gen 等)に組み込む際の知見

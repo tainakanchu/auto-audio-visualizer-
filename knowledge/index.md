@@ -15,3 +15,4 @@ okf_version: "0.2"
 * [workers-builds-monitoring](/workers-builds-monitoring.md) - Cloudflare Workers Builds の結果は check-runs API で見る
 * [3d-generator-design-principles](/3d-generator-design-principles.md) - 3D Generator は「埋めない系」hero object を優先する
 * [deck-bank-recall-decision](/deck-bank-recall-decision.md) - deck の bank recall は live look を変えない
+* [jev-system-one-model](/jev-system-one-model.md) - Jev (TypeSafe AI) は文章を生成しない判断専用モデル。生成ではなく分岐・選別・採点に使う
