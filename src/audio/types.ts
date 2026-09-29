@@ -55,6 +55,9 @@ export interface AudioFrame {
   tempoConfidence: number;
   /** Whether the grid is reliably locked to the music. */
   tempoLocked: boolean;
-  /** Active tempo mode ('auto' detection or 'manual' tap). */
-  tempoMode: 'auto' | 'manual';
+  /** Active tempo mode ('auto' detection, 'manual' tap, or 'link' Pro DJ Link beats). */
+  tempoMode: TempoMode;
 }
+
+/** Tempo source: audio detection, tap tempo, or external (Pro DJ Link) beats. */
+export type TempoMode = 'auto' | 'manual' | 'link';

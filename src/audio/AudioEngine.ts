@@ -374,6 +374,15 @@ export class AudioEngine {
     this.tempo.setAuto();
   }
 
+  /**
+   * Feed an external (Pro DJ Link) beat, timestamped with the browser's own
+   * receive time (the bridge's clock is not comparable). Delegates to the
+   * tracker, which enters 'link' mode until beats stop for 3 s.
+   */
+  externalBeat(bpm: number, beatInBar: number | null): void {
+    this.tempo.externalBeat(bpm, beatInBar, performance.now());
+  }
+
   /** Average of normalised (0..1) frequency magnitudes across a bin range. */
   private bandAverage([lo, hi]: [number, number]): number {
     let sum = 0;

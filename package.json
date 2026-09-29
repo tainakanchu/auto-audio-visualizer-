@@ -8,6 +8,8 @@
     "build": "tsc -b && vite build",
     "preview": "vite preview",
     "bridge": "node scripts/vj-bridge.mjs",
+    "prolink": "node scripts/prolink-bridge.mjs",
+    "prolink:sim": "node scripts/prolink-sim.mjs",
     "vj:gen": "node scripts/vj-gen.mjs",
     "vj:set": "node scripts/vj-set.mjs",
     "vj:tweak": "node scripts/vj-tweak.mjs",

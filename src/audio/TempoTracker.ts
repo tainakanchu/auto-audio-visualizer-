@@ -9,7 +9,22 @@
  *
  * Framework-free; allocates only at construction and inside the ~2 Hz analysis
  * pass (scratch copies), never per `update()`.
+ *
+ * External beats (Pro DJ Link, via src/audio/linkClient.ts): {@link
+ * TempoTracker.externalBeat} puts the tracker into 'link' mode, where the
+ * received BPM drives the grid and each packet snaps a grid beat onto its
+ * arrival time. The grid still freewheels between packets. Link is an overlay
+ * on top of the auto/manual mode, not a replacement for it: while link is
+ * active, tap / multiply / setAuto only update that underlying auto/manual
+ * state (tap does NOT re-anchor the grid, the multiplier is NOT applied to the
+ * link BPM), and when packets stop for {@link LINK_TIMEOUT_MS} the tracker
+ * falls back to that underlying mode — including any tap/multiply/setAuto that
+ * happened during link.
  */
+
+import type { TempoMode } from './types';
+
+export type { TempoMode };
 
 /** Output snapshot merged into every {@link import('./types').AudioFrame}. */
 export interface TempoState {
@@ -35,8 +50,8 @@ export interface TempoState {
   tempoConfidence: number;
   /** Whether the grid is considered reliably locked to the music. */
   tempoLocked: boolean;
-  /** Active tempo mode. */
-  tempoMode: 'auto' | 'manual';
+  /** Active tempo mode ('link' while external Pro DJ Link beats are arriving). */
+  tempoMode: TempoMode;
 }
 
 /** Envelope sample rate (Hz) and bin width (ms). */
@@ -72,6 +87,12 @@ const TAP_MAX_INTERVALS = 6;
 
 /** Lock threshold on confidence (auto mode). */
 const LOCK_CONFIDENCE = 0.35;
+
+/** Leave link mode when no external beat has arrived for this long. */
+export const LINK_TIMEOUT_MS = 3000;
+/** Sanity range for an external BPM (anything else is ignored). */
+const LINK_BPM_MIN = 20;
+const LINK_BPM_MAX = 400;
 
 function clamp(v: number, lo: number, hi: number): number {
   return v < lo ? lo : v > hi ? hi : v;
@@ -118,6 +139,10 @@ export class TempoTracker {
   private baseBpm = 0;
   /** Manual (tap) BPM (0 until first tap chain). */
   private manualBpm = 0;
+  /**
+   * Underlying (non-link) mode. Kept as-is while link is active so we can
+   * return to it when link times out.
+   */
   private mode: 'auto' | 'manual' = 'auto';
   private userMultiplier = 1;
   private confidence = 0;
@@ -134,6 +159,16 @@ export class TempoTracker {
   private barPulse = 0;
   /** Whether phase alignment has ever locked (drives full-snap on first lock). */
   private phaseLocked = false;
+  /** Nominal time of the most recently fired grid beat (-Infinity before any). */
+  private lastGridBeatMs = -Infinity;
+
+  // ---- External (Pro DJ Link) beats ----
+  /** Whether external beats currently own the grid. */
+  private linkActive = false;
+  /** BPM reported by the last external beat. */
+  private linkBpm = 0;
+  /** Arrival time of the last external beat. */
+  private lastLinkMs = 0;
 
   // ---- Tap state ----
   private taps: number[] = [];
@@ -144,6 +179,9 @@ export class TempoTracker {
 
   /** Effective BPM given mode + user multiplier (0 if no estimate yet). */
   private effectiveBpm(): number {
+    // Link BPM is authoritative: the DJ's pitch fader already set it, so the
+    // user multiplier is deliberately not applied (it resumes after link).
+    if (this.linkActive) return this.linkBpm;
     const base = this.mode === 'manual' ? this.manualBpm : this.baseBpm;
     return base > 0 ? base * this.userMultiplier : 0;
   }
@@ -165,6 +203,12 @@ export class TempoTracker {
 
     // Rolling level average for the silence gate (~1 s time constant).
     this.avgLevel += (level - this.avgLevel) * 0.05;
+
+    // Link timeout: fall back to the underlying auto/manual mode. The grid's
+    // position is kept, so the fallback continues seamlessly from link's phase.
+    if (this.linkActive && nowMs - this.lastLinkMs > LINK_TIMEOUT_MS) {
+      this.linkActive = false;
+    }
 
     this.accumulateEnvelope(onset, nowMs);
 
@@ -266,8 +310,10 @@ export class TempoTracker {
     this.updateBaseBpm(candidate, conf);
 
     // Phase alignment only in auto mode: in manual mode the tap already set
-    // both tempo and phase, so auto-nudging must not drift the grid.
-    if (this.mode === 'auto') {
+    // both tempo and phase, so auto-nudging must not drift the grid. In link
+    // mode the external beats own the phase. (The BPM estimate above still
+    // runs during link so auto is warm when link ends.)
+    if (this.mode === 'auto' && !this.linkActive) {
       const effBpm = this.effectiveBpm();
       if (effBpm > 0) this.alignPhase(buf, n, effBpm, nowMs);
     }
@@ -387,6 +433,7 @@ export class TempoTracker {
     }
 
     while (nowMs >= this.nextBeatMs) {
+      this.lastGridBeatMs = this.nextBeatMs;
       this.beatIndex++;
       this.nextBeatMs += periodMs;
       this.outGridBeat = true;
@@ -424,7 +471,9 @@ export class TempoTracker {
         this.manualBpm = 60000 / median;
         this.mode = 'manual';
         this.confidence = 1;
-        this.anchorGridToTap(nowMs);
+        // While link is active the external beats own the grid; the tap only
+        // updates the manual state that takes over when link ends.
+        if (!this.linkActive) this.anchorGridToTap(nowMs);
       }
     }
   }
@@ -445,15 +494,71 @@ export class TempoTracker {
     this.gridInitialized = true;
   }
 
-  /** Scale the user multiplier by 2 or 0.5 (clamped 0.25..4). */
+  /**
+   * Scale the user multiplier by 2 or 0.5 (clamped 0.25..4). During link the
+   * multiplier is stored but not applied until link ends.
+   */
   multiply(f: 2 | 0.5): void {
     this.userMultiplier = clamp(this.userMultiplier * f, 0.25, 4);
   }
 
-  /** Return to automatic detection at 1× multiplier. */
+  /**
+   * Return to automatic detection at 1× multiplier. During link this only
+   * changes the mode link falls back to; link itself keeps running.
+   */
   setAuto(): void {
     this.mode = 'auto';
     this.userMultiplier = 1;
+  }
+
+  /**
+   * Feed one external beat (a Pro DJ Link beat packet), received at `nowMs`.
+   *
+   * Enters link mode, sets the grid tempo to `bpm`, and aligns the grid so a
+   * grid beat lands on `nowMs` with `beatInBar` (1-based, 1..4; anything else
+   * skips bar alignment). The grid stays monotonic:
+   * - If a grid beat fired within the last half period, the packet is taken to
+   *   be that beat: it is not fired again, and the next beat is re-timed to
+   *   `nowMs + period`.
+   * - Otherwise the packet's beat is fired on the next `update()` (nextBeatMs
+   *   is set to `nowMs`).
+   * Bar alignment only ever moves `beatIndex` forward (0..3 beats), so
+   * `barCount` never decreases; a forward jump may skip a bar without a
+   * `gridBar` pulse.
+   *
+   * Invalid BPMs (non-finite or outside 20..400) are ignored entirely.
+   */
+  externalBeat(bpm: number, beatInBar: number | null, nowMs: number): void {
+    if (!Number.isFinite(bpm) || bpm < LINK_BPM_MIN || bpm > LINK_BPM_MAX) return;
+    this.linkActive = true;
+    this.linkBpm = bpm;
+    this.lastLinkMs = nowMs;
+
+    const periodMs = 60000 / bpm;
+    const alreadyFired = this.gridInitialized && nowMs - this.lastGridBeatMs < periodMs * 0.5;
+
+    // Index the packet's beat will have in the grid.
+    let packetIndex: number;
+    if (alreadyFired) {
+      packetIndex = this.beatIndex;
+      this.nextBeatMs = nowMs + periodMs;
+    } else {
+      packetIndex = this.beatIndex + 1;
+      this.nextBeatMs = nowMs;
+    }
+    this.gridInitialized = true;
+    this.phaseLocked = true;
+
+    if (beatInBar !== null && Number.isInteger(beatInBar) && beatInBar >= 1 && beatInBar <= 4) {
+      const want = beatInBar - 1;
+      const delta = (want - (packetIndex % 4) + 4) % 4;
+      this.beatIndex += delta;
+    }
+  }
+
+  /** Whether external (Pro DJ Link) beats currently own the grid. */
+  get linkMode(): boolean {
+    return this.linkActive;
   }
 
   // ---- Output ----
@@ -480,8 +585,14 @@ export class TempoTracker {
     out.gridBar = this.outGridBar;
     out.gridPulse = this.gridPulse;
     out.barPulse = this.barPulse;
-    out.tempoConfidence = clamp(this.confidence, 0, 1);
-    out.tempoLocked = bpm > 0 && (this.mode === 'manual' || this.confidence > LOCK_CONFIDENCE);
-    out.tempoMode = this.mode;
+    if (this.linkActive) {
+      out.tempoConfidence = 1;
+      out.tempoLocked = bpm > 0;
+      out.tempoMode = 'link';
+    } else {
+      out.tempoConfidence = clamp(this.confidence, 0, 1);
+      out.tempoLocked = bpm > 0 && (this.mode === 'manual' || this.confidence > LOCK_CONFIDENCE);
+      out.tempoMode = this.mode;
+    }
   }
 }

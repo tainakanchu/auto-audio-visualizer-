@@ -12,3 +12,6 @@ tags:
   - name: deck
     category: domain
     description: deck・外部制御まわり
+  - name: tempo
+    category: domain
+    description: テンポ検出・ビートグリッド・外部機材とのテンポ同期

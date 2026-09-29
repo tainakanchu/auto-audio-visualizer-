@@ -7,9 +7,11 @@
 // audio:gridPulse / audio:barPulse を欠いていて、audio:beatIntensity を使う
 // パッチ（今回の安全対応そのもの）がローカル検証で弾かれていた。
 import { describe, expect, it } from 'vitest';
+import * as linkClient from '../src/audio/linkClient.ts';
 import * as derive from '../src/synth/derive.ts';
 import * as schema from '../src/synth/schema.ts';
 import * as validate from '../src/synth/validate.ts';
+import * as prolinkPacket from './prolink-packet.mjs';
 import * as vjGen from './vj-gen.mjs';
 import * as vjTweak from './vj-tweak.mjs';
 
@@ -87,5 +89,13 @@ describe('constants drift: vj-tweak.mjs vs src/synth/*.ts', () => {
     expect(sortedArray(vjTweak.COMPOSITION_KEYS)).toEqual(
       sortedArray(Object.keys(schema.compositionSpecSchema.entries)),
     );
+  });
+});
+
+// prolink-bridge（Node）とブラウザの linkClient は別々に既定ポートを持つ。
+// ずれると `?link=1` が誰もいないポートへ繋ぎにいき、黙って LINK にならない。
+describe('constants drift: prolink-packet.mjs vs src/audio/linkClient.ts', () => {
+  it('DEFAULT_LINK_WS_PORT matches linkClient DEFAULT_LINK_PORT', () => {
+    expect(prolinkPacket.DEFAULT_LINK_WS_PORT).toBe(linkClient.DEFAULT_LINK_PORT);
   });
 });

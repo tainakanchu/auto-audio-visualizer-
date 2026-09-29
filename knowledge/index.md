@@ -15,3 +15,4 @@ okf_version: "0.2"
 * [workers-builds-monitoring](/workers-builds-monitoring.md) - Cloudflare Workers Builds の結果は check-runs API で見る
 * [3d-generator-design-principles](/3d-generator-design-principles.md) - 3D Generator は「埋めない系」hero object を優先する
 * [deck-bank-recall-decision](/deck-bank-recall-decision.md) - deck の bank recall は live look を変えない
+* [prolink-beat-packet](/prolink-beat-packet.md) - Pro DJ Link ビートパケット (UDP 50001 / 0x28) は 96 バイト、受信だけで取れる

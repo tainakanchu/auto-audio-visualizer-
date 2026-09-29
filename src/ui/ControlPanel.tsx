@@ -55,7 +55,15 @@ interface ControlPanelProps {
 /** Polling rate for the level meter / beat dot / tempo readout (Hz). */
 const METER_HZ = 30;
 
-type TempoStatus = 'tap' | 'lock' | 'search';
+type TempoStatus = 'link' | 'tap' | 'lock' | 'search';
+
+/** Chip label per tempo status. LINK = Pro DJ Link beats own the grid. */
+const TEMPO_STATUS_LABEL: Record<TempoStatus, string> = {
+  link: 'LINK',
+  tap: 'TAP',
+  lock: 'LOCK',
+  search: 'SEARCH…',
+};
 
 /** Coarse UI snapshot refreshed by the meter interval (one React state). */
 interface MeterState {
@@ -169,7 +177,13 @@ export function ControlPanel(props: ControlPanelProps): React.ReactElement {
         }, 110);
       }
       const status: TempoStatus =
-        f.tempoMode === 'manual' ? 'tap' : f.tempoLocked ? 'lock' : 'search';
+        f.tempoMode === 'link'
+          ? 'link'
+          : f.tempoMode === 'manual'
+            ? 'tap'
+            : f.tempoLocked
+              ? 'lock'
+              : 'search';
 
       // performance.now() (not Date.now()) — guaranteed monotonic, and
       // matches the clock AudioEngine uses internally. Date.now() can jump
@@ -306,9 +320,7 @@ export function ControlPanel(props: ControlPanelProps): React.ReactElement {
             {meter.bpm > 0 ? meter.bpm.toFixed(1) : '—'}
             <span className="bpm-unit">BPM</span>
           </span>
-          <span className={`tempo-chip ${meter.status}`}>
-            {meter.status === 'tap' ? 'TAP' : meter.status === 'lock' ? 'LOCK' : 'SEARCH…'}
-          </span>
+          <span className={`tempo-chip ${meter.status}`}>{TEMPO_STATUS_LABEL[meter.status]}</span>
         </div>
         <div className="beat-dots" aria-label="beat position">
           {[0, 1, 2, 3].map((i) => (

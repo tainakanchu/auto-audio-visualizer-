@@ -5,6 +5,10 @@ title: knowledge バンドルの更新履歴
 
 # Bundle history
 
+## 2026-09-29
+
+- **Update**: [prolink-beat-packet](prolink-beat-packet.md) を追加。tags.yml に `tempo` を追加。
+
 ## 2026-09-02
 
 - **Creation**: `knowledge/` バンドルを作成し、OKF v0.2 での記録を開始した。

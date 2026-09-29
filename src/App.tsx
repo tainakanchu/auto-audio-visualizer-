@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { AudioEngine } from './audio/AudioEngine';
+import { initLinkClient } from './audio/linkClient';
 import { initDeckHost, type DeckHostHandlers } from './deck/host';
 import { openSceneDeck } from './deck/openDeck';
 import type { DeckAppState, DeckCommand } from './deck/protocol';
@@ -523,6 +524,12 @@ export function App(): React.ReactElement {
   // デッキ host は BroadcastChannel のみなので常時起動する（ネットワーク副作用なし）。
   useEffect(() => {
     const handle = initBridgeClient();
+    // Pro DJ Link（?link=1 のときだけ。scripts/prolink-bridge.mjs から beat を受ける）。
+    // engineRef を毎回読むのは、engine の生成 effect と順序が入れ替わっても
+    // 取りこぼさないため（未生成の間の beat は捨ててよい）。
+    const link = initLinkClient((beat) => {
+      engineRef.current?.externalBeat(beat.bpm, beat.beatInBar);
+    });
     const handlers: DeckHostHandlers = {
       getAppState: () => getAppStateRef.current(),
       runCommand: (command) => runCommandRef.current(command),
@@ -531,6 +538,7 @@ export function App(): React.ReactElement {
     // StrictMode では effect が2回走るので、必ず畳んで多重接続を防ぐ。
     return () => {
       handle?.close();
+      link?.close();
       deck?.close();
     };
   }, []);

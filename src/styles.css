@@ -497,6 +497,11 @@ input[type='range'] {
   background: rgba(170, 110, 240, 0.18);
   border-color: rgba(185, 130, 245, 0.5);
 }
+.tempo-chip.link {
+  color: hsl(190, 95%, 82%);
+  background: rgba(40, 190, 240, 0.18);
+  border-color: rgba(70, 200, 245, 0.55);
+}
 .beat-dots {
   display: flex;
   gap: 8px;
