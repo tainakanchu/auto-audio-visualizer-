@@ -26,14 +26,14 @@ export const PIPELINE_FN = 'synthPipeline';
 /**
  * Patch 共通のオーディオ反応の**下地**。
  *
- * Generator は 105 個中 8 個しか音の uniform を読まないので、Generator 任せに
+ * Generator の大半は音の uniform を読まないので、Generator 任せに
  * すると「音に反応している感が無い Patch」が大量に出る。どんな組み合わせを
  * 引いても最低限は音に反応するように、main() の中で全 Patch 共通に効かせる。
  *
  * 演出の主役は {@link ./reactions} のリアクション層で、ここはその下に敷く
  * 最低保証。座標側の 2 つの値は**動かさないこと**: Generator ごとの被覆率
  * (`coverage.generated.ts`) はリアクション層を切った状態で測っており、この
- * ズーム量が変わると 105 個ぶんの測定値がまとめてドリフトする。
+ * ズーム量が変わると全 Generator ぶんの測定値がまとめてドリフトする。
  */
 /** 拍の頭で画面を寄せる量（0.05 = 5% ズームイン）。 */
 const PUNCH_ZOOM = 0.05;

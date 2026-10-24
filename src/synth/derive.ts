@@ -101,7 +101,7 @@ export const ROUTE_SOURCES: readonly RouteSource[] = [
  *
  * 拒否リストではなく許可リストなのは、「音に反応して画が消える」ことを
  * 構造的に禁止するため。`threshold` / `gate` / `dropout` のように**上げると絵が
- * 消える**パラメータが 105 個の Generator に散らばっていて、名前で危険なものを
+ * 消える**パラメータが 100 個以上の Generator に散らばっていて、名前で危険なものを
  * 数え上げるやり方だと必ず取りこぼす。クラブの大音量下でずっと真っ暗、という
  * 事故は「たまに起きる」では済まないので、安全側が既定になる形にしてある。
  *
@@ -482,7 +482,7 @@ function paramIdOf(targetKey: string): string {
  * Build {@link MIN_ROUTES}–{@link MAX_ROUTES} audio→param routes against final
  * operators. No duplicate targets.
  *
- * Generator 側は 105 個中 8 個しか音の uniform を読まないので、Patch のどの
+ * Generator 側は大半が音の uniform を読まないので、Patch のどの
  * パラメータが音に反応するかは実質ここで決まる（画面全体に効く共通の反応は
  * gl/reactions のリアクション層が担当する）。
  *
