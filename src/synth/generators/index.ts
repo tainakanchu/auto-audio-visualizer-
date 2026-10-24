@@ -88,6 +88,9 @@ import { scalerRingingGenerator } from './scalerRinging';
 import { sdfBlobGenerator } from './sdfBlob';
 import { sdfCubeGenerator } from './sdfCube';
 import { sdfLatticeGenerator } from './sdfLattice';
+import { sdfMagicEyeGenerator } from './sdfMagicEye';
+import { sdfMandelboxGenerator } from './sdfMandelbox';
+import { sdfPlanetGenerator } from './sdfPlanet';
 import { sdfTunnelGenerator } from './sdfTunnel';
 import { scanSlipGenerator } from './scanSlip';
 import { scooterSlipstreamGenerator } from './scooterSlipstream';
@@ -168,6 +171,9 @@ export { sdfTunnelGenerator, sdfTunnelDef } from './sdfTunnel';
 export { sdfLatticeGenerator, sdfLatticeDef } from './sdfLattice';
 export { sdfBlobGenerator, sdfBlobDef } from './sdfBlob';
 export { sdfCubeGenerator, sdfCubeDef } from './sdfCube';
+export { sdfMandelboxGenerator, sdfMandelboxDef } from './sdfMandelbox';
+export { sdfMagicEyeGenerator, sdfMagicEyeDef } from './sdfMagicEye';
+export { sdfPlanetGenerator, sdfPlanetDef } from './sdfPlanet';
 export { noiseGenerator, noiseDef } from './noise';
 export { vortexGenerator, vortexDef } from './vortex';
 export { flowGenerator, flowDef } from './flow';
@@ -288,6 +294,10 @@ const ALL: InlineGenerator[] = [
   sdfLatticeGenerator,
   sdfBlobGenerator,
   sdfCubeGenerator,
+  sdfMandelboxGenerator,
+  sdfMagicEyeGenerator,
+  // sdfPlanet だけは medium（解析交差 + 短い地形 march なので low tier にも出る）
+  sdfPlanetGenerator,
   // 画像入力を持つ source（seed ガチャの対象外 — derive.ts が textures 持ちを除外する）
   stampGenerator,
   // fields

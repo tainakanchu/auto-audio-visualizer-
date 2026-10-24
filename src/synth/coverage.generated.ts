@@ -366,6 +366,18 @@ export const GENERATOR_COVERAGE: CoverageTable = {
     meanAlpha: { p10: 0.1914, p50: 0.2427, p90: 0.3239 },
     solidFraction: { p10: 0.0383, p50: 0.079, p90: 0.1785 },
   },
+  sdfMagicEye: {
+    meanAlpha: { p10: 0.0314, p50: 0.0464, p90: 0.0574 },
+    solidFraction: { p10: 0.0047, p50: 0.0083, p90: 0.0205 },
+  },
+  sdfMandelbox: {
+    meanAlpha: { p10: 0.0531, p50: 0.1026, p90: 0.1077 },
+    solidFraction: { p10: 0.0229, p50: 0.0292, p90: 0.0418 },
+  },
+  sdfPlanet: {
+    meanAlpha: { p10: 0.0122, p50: 0.0233, p90: 0.0307 },
+    solidFraction: { p10: 0.0054, p50: 0.0116, p90: 0.0178 },
+  },
   sdfTunnel: {
     meanAlpha: { p10: 0.2574, p50: 0.3294, p90: 0.3466 },
     solidFraction: { p10: 0.0241, p50: 0.0512, p90: 0.0809 },

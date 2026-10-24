@@ -449,7 +449,15 @@ describe('synth/gl preludes', () => {
   });
 
   it('the real 3D generators share one copy of sdf3d', () => {
-    const patch = patchOf(['sdfTunnel', 'sdfLattice', 'sdfBlob', 'sdfCube']);
+    const patch = patchOf([
+      'sdfTunnel',
+      'sdfLattice',
+      'sdfBlob',
+      'sdfCube',
+      'sdfMandelbox',
+      'sdfMagicEye',
+      'sdfPlanet',
+    ]);
     const { fragSrc } = assemblePatch(patch, inlineCatalog);
     expect(countOccurrences(fragSrc, SPHERE_DECL)).toBe(1);
     expect(countOccurrences(fragSrc, 'vec2 rot2(vec2 p, float a) {')).toBe(1);
