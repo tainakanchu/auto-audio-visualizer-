@@ -15,11 +15,13 @@ import { brakeLightRainGenerator } from './brakeLightRain';
 import { busJacquardGenerator } from './busJacquard';
 import { busPolarizationGenerator } from './busPolarization';
 import { cassetteWindowGenerator } from './cassetteWindow';
+import { causticsGenerator } from './caustics';
 import { cdDiffractionGenerator } from './cdDiffraction';
 import { cellsGenerator } from './cells';
 import { chainlinkGenerator } from './chainlink';
 import { checkerGenerator } from './checker';
 import { cheapLedGenerator } from './cheapLed';
+import { chladniGenerator } from './chladni';
 import { concentricGenerator } from './concentric';
 import { coneFieldGenerator } from './coneField';
 import { contourGenerator } from './contour';
@@ -28,9 +30,12 @@ import { crossingParallaxGenerator } from './crossingParallax';
 import { crtGenerator } from './crt';
 import { dropoutGenerator } from './dropout';
 import { fanGuardGenerator } from './fanGuard';
+import { fireworksGenerator } from './fireworks';
+import { flameColumnGenerator } from './flameColumn';
 import { flowGenerator } from './flow';
 import { fluorescentGenerator } from './fluorescent';
 import { flyoverBeamsGenerator } from './flyoverBeams';
+import { fractalPaperGenerator } from './fractalPaper';
 import { freezerCyanGenerator } from './freezerCyan';
 import { gammaGenerator } from './gamma';
 import { gateGenerator } from './gate';
@@ -40,6 +45,7 @@ import { gridGenerator } from './grid';
 import { grilleGenerator } from './grille';
 import { halftoneGenerator } from './halftone';
 import { harborBackwashGenerator } from './harborBackwash';
+import { hatchingGenerator } from './hatching';
 import { hexGridGenerator } from './hexGrid';
 import { hillClimbGenerator } from './hillClimb';
 import { humidGalvanizedGenerator } from './humidGalvanized';
@@ -50,11 +56,13 @@ import { invertGenerator } from './invert';
 import { kaleidoGenerator } from './kaleido';
 import { karaokeLcdGenerator } from './karaokeLcd';
 import { kumikoGenerator } from './kumiko';
+import { lavaBlobsGenerator } from './lavaBlobs';
 import { macroblockGenerator } from './macroblock';
 import { minidvFadeGenerator } from './minidvFade';
 import { mirrorGenerator } from './mirror';
 import { misprintGenerator } from './misprint';
 import { mooringRopeGenerator } from './mooringRope';
+import { mosaicFlipGenerator } from './mosaicFlip';
 import { neonGenerator } from './neon';
 import { nicotineCeilingGenerator } from './nicotineCeiling';
 import { nightMarketCurtainGenerator } from './nightMarketCurtain';
@@ -80,11 +88,16 @@ import { scalerRingingGenerator } from './scalerRinging';
 import { sdfBlobGenerator } from './sdfBlob';
 import { sdfCubeGenerator } from './sdfCube';
 import { sdfLatticeGenerator } from './sdfLattice';
+import { sdfMagicEyeGenerator } from './sdfMagicEye';
+import { sdfMandelboxGenerator } from './sdfMandelbox';
+import { sdfPlanetGenerator } from './sdfPlanet';
 import { sdfTunnelGenerator } from './sdfTunnel';
 import { scanSlipGenerator } from './scanSlip';
 import { scooterSlipstreamGenerator } from './scooterSlipstream';
 import { seaSaltGenerator } from './seaSalt';
 import { seigaihaGenerator } from './seigaiha';
+import { selfSimilarZoomGenerator } from './selfSimilarZoom';
+import { shockwaveGenerator } from './shockwave';
 import { sleeperRailGenerator } from './sleeperRail';
 import { sliceGenerator } from './slice';
 import { sodiumGenerator } from './sodium';
@@ -146,10 +159,21 @@ export { chainlinkGenerator, chainlinkDef } from './chainlink';
 export { barcodeGenerator, barcodeDef } from './barcode';
 export { petalsGenerator, petalsDef } from './petals';
 export { urokoGenerator, urokoDef } from './uroko';
+export { selfSimilarZoomGenerator, selfSimilarZoomDef } from './selfSimilarZoom';
+export { chladniGenerator, chladniDef } from './chladni';
+export { lavaBlobsGenerator, lavaBlobsDef } from './lavaBlobs';
+export { causticsGenerator, causticsDef } from './caustics';
+export { mosaicFlipGenerator, mosaicFlipDef } from './mosaicFlip';
+export { fractalPaperGenerator, fractalPaperDef } from './fractalPaper';
+export { fireworksGenerator, fireworksDef } from './fireworks';
+export { flameColumnGenerator, flameColumnDef } from './flameColumn';
 export { sdfTunnelGenerator, sdfTunnelDef } from './sdfTunnel';
 export { sdfLatticeGenerator, sdfLatticeDef } from './sdfLattice';
 export { sdfBlobGenerator, sdfBlobDef } from './sdfBlob';
 export { sdfCubeGenerator, sdfCubeDef } from './sdfCube';
+export { sdfMandelboxGenerator, sdfMandelboxDef } from './sdfMandelbox';
+export { sdfMagicEyeGenerator, sdfMagicEyeDef } from './sdfMagicEye';
+export { sdfPlanetGenerator, sdfPlanetDef } from './sdfPlanet';
 export { noiseGenerator, noiseDef } from './noise';
 export { vortexGenerator, vortexDef } from './vortex';
 export { flowGenerator, flowDef } from './flow';
@@ -166,6 +190,7 @@ export { harborBackwashGenerator, harborBackwashDef } from './harborBackwash';
 export { sleeperRailGenerator, sleeperRailDef } from './sleeperRail';
 export { scooterSlipstreamGenerator, scooterSlipstreamDef } from './scooterSlipstream';
 export { crossingParallaxGenerator, crossingParallaxDef } from './crossingParallax';
+export { shockwaveGenerator, shockwaveDef } from './shockwave';
 export { mirrorGenerator, mirrorDef } from './mirror';
 export { repeatGenerator, repeatDef } from './repeat';
 export { pixelateGenerator, pixelateDef } from './pixelate';
@@ -215,6 +240,7 @@ export { sunbleachedTarpGenerator, sunbleachedTarpDef } from './sunbleachedTarp'
 export { risoGenerator, risoDef } from './riso';
 export { blueprintGenerator, blueprintDef } from './blueprint';
 export { goldfoilGenerator, goldfoilDef } from './goldfoil';
+export { hatchingGenerator, hatchingDef } from './hatching';
 export { stampGenerator, stampDef } from './stamp';
 
 const ALL: InlineGenerator[] = [
@@ -254,12 +280,24 @@ const ALL: InlineGenerator[] = [
   barcodeGenerator,
   petalsGenerator,
   urokoGenerator,
+  selfSimilarZoomGenerator,
+  chladniGenerator,
+  lavaBlobsGenerator,
+  causticsGenerator,
+  mosaicFlipGenerator,
+  fractalPaperGenerator,
+  fireworksGenerator,
+  flameColumnGenerator,
   // 3D (SDF レイマーチ) source — costClass: heavy。low tier では derive の候補から
   // 外れる（derive.ts の fitsBudgetAlone）。
   sdfTunnelGenerator,
   sdfLatticeGenerator,
   sdfBlobGenerator,
   sdfCubeGenerator,
+  sdfMandelboxGenerator,
+  sdfMagicEyeGenerator,
+  // sdfPlanet だけは medium（解析交差 + 短い地形 march なので low tier にも出る）
+  sdfPlanetGenerator,
   // 画像入力を持つ source（seed ガチャの対象外 — derive.ts が textures 持ちを除外する）
   stampGenerator,
   // fields
@@ -279,6 +317,7 @@ const ALL: InlineGenerator[] = [
   sleeperRailGenerator,
   scooterSlipstreamGenerator,
   crossingParallaxGenerator,
+  shockwaveGenerator,
   // modifiers (coord + value)
   mirrorGenerator,
   repeatGenerator,
@@ -330,6 +369,7 @@ const ALL: InlineGenerator[] = [
   risoGenerator,
   blueprintGenerator,
   goldfoilGenerator,
+  hatchingGenerator,
 ];
 
 /** Built-in inline generator catalog (Phase 1 generators). */

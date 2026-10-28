@@ -69,7 +69,15 @@ function gridMaterialPatches(): NamedPatch[] {
  * constant normal, so a plain NdotL quantises the whole object to a handful of
  * levels and the material downstream receives almost no information.
  */
-const RAYMARCHED_SOURCE_IDS = ['sdfTunnel', 'sdfLattice', 'sdfBlob', 'sdfCube'] as const;
+const RAYMARCHED_SOURCE_IDS = [
+  'sdfTunnel',
+  'sdfLattice',
+  'sdfBlob',
+  'sdfCube',
+  'sdfMandelbox',
+  'sdfMagicEye',
+  'sdfPlanet',
+] as const;
 
 /** Unique patches from the source and material sets (dedupe by label). */
 function allRenderPatches(): NamedPatch[] {

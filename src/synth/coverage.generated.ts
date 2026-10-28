@@ -66,6 +66,10 @@ export const GENERATOR_COVERAGE: CoverageTable = {
     meanAlpha: { p10: 0.0639, p50: 0.0931, p90: 0.1407 },
     solidFraction: { p10: 0.0595, p50: 0.0863, p90: 0.1326 },
   },
+  caustics: {
+    meanAlpha: { p10: 0.0503, p50: 0.1592, p90: 0.3903 },
+    solidFraction: { p10: 0.0069, p50: 0.0294, p90: 0.2532 },
+  },
   cdDiffraction: {
     meanAlpha: { p10: 0.4094, p50: 0.7685, p90: 0.9534 },
     solidFraction: { p10: 0.3509, p50: 0.8063, p90: 0.9567 },
@@ -85,6 +89,10 @@ export const GENERATOR_COVERAGE: CoverageTable = {
   checker: {
     meanAlpha: { p10: 0.5, p50: 0.5, p90: 0.5 },
     solidFraction: { p10: 0.5, p50: 0.5, p90: 0.5 },
+  },
+  chladni: {
+    meanAlpha: { p10: 0.1177, p50: 0.1596, p90: 0.1808 },
+    solidFraction: { p10: 0.0519, p50: 0.0745, p90: 0.1129 },
   },
   concentric: {
     meanAlpha: { p10: 0.6224, p50: 0.9996, p90: 1.0 },
@@ -118,6 +126,14 @@ export const GENERATOR_COVERAGE: CoverageTable = {
     meanAlpha: { p10: 0.1306, p50: 0.213, p90: 0.2868 },
     solidFraction: { p10: 0.1309, p50: 0.2138, p90: 0.2893 },
   },
+  fireworks: {
+    meanAlpha: { p10: 0.021, p50: 0.0258, p90: 0.0452 },
+    solidFraction: { p10: 0.0094, p50: 0.0109, p90: 0.0216 },
+  },
+  flameColumn: {
+    meanAlpha: { p10: 0.1157, p50: 0.1713, p90: 0.2206 },
+    solidFraction: { p10: 0.0999, p50: 0.1458, p90: 0.2009 },
+  },
   flow: {
     meanAlpha: { p10: 0.4942, p50: 0.7794, p90: 0.884 },
     solidFraction: { p10: 0.49, p50: 0.8087, p90: 0.9169 },
@@ -129,6 +145,10 @@ export const GENERATOR_COVERAGE: CoverageTable = {
   flyoverBeams: {
     meanAlpha: { p10: 0.0209, p50: 0.0282, p90: 0.0599 },
     solidFraction: { p10: 0.0202, p50: 0.0292, p90: 0.0618 },
+  },
+  fractalPaper: {
+    meanAlpha: { p10: 0.1547, p50: 0.5162, p90: 0.6228 },
+    solidFraction: { p10: 0.1283, p50: 0.4977, p90: 0.685 },
   },
   freezerCyan: {
     meanAlpha: { p10: 0.3246, p50: 0.7173, p90: 0.9281 },
@@ -165,6 +185,10 @@ export const GENERATOR_COVERAGE: CoverageTable = {
   harborBackwash: {
     meanAlpha: { p10: 0.4895, p50: 0.7809, p90: 0.8933 },
     solidFraction: { p10: 0.4862, p50: 0.8086, p90: 0.9153 },
+  },
+  hatching: {
+    meanAlpha: { p10: 0.5391, p50: 0.7385, p90: 0.857 },
+    solidFraction: { p10: 0.6372, p50: 0.8679, p90: 0.9531 },
   },
   hexGrid: {
     meanAlpha: { p10: 0.2693, p50: 0.7547, p90: 0.959 },
@@ -206,6 +230,10 @@ export const GENERATOR_COVERAGE: CoverageTable = {
     meanAlpha: { p10: 0.0881, p50: 0.1426, p90: 0.2761 },
     solidFraction: { p10: 0.085, p50: 0.1494, p90: 0.2755 },
   },
+  lavaBlobs: {
+    meanAlpha: { p10: 0.1227, p50: 0.2764, p90: 0.3232 },
+    solidFraction: { p10: 0.0808, p50: 0.1467, p90: 0.1782 },
+  },
   macroblock: {
     meanAlpha: { p10: 0.4398, p50: 0.7981, p90: 0.9053 },
     solidFraction: { p10: 0.4347, p50: 0.8125, p90: 0.9126 },
@@ -225,6 +253,10 @@ export const GENERATOR_COVERAGE: CoverageTable = {
   mooringRope: {
     meanAlpha: { p10: 0.0997, p50: 0.1505, p90: 0.1817 },
     solidFraction: { p10: 0.105, p50: 0.1812, p90: 0.2245 },
+  },
+  mosaicFlip: {
+    meanAlpha: { p10: 0.3423, p50: 0.3717, p90: 0.4548 },
+    solidFraction: { p10: 0.3602, p50: 0.4332, p90: 0.526 },
   },
   neon: {
     meanAlpha: { p10: 0.3421, p50: 0.7032, p90: 0.9297 },
@@ -334,6 +366,18 @@ export const GENERATOR_COVERAGE: CoverageTable = {
     meanAlpha: { p10: 0.1914, p50: 0.2427, p90: 0.3239 },
     solidFraction: { p10: 0.0383, p50: 0.079, p90: 0.1785 },
   },
+  sdfMagicEye: {
+    meanAlpha: { p10: 0.0314, p50: 0.0464, p90: 0.0574 },
+    solidFraction: { p10: 0.0047, p50: 0.0083, p90: 0.0205 },
+  },
+  sdfMandelbox: {
+    meanAlpha: { p10: 0.0531, p50: 0.1026, p90: 0.1077 },
+    solidFraction: { p10: 0.0229, p50: 0.0292, p90: 0.0418 },
+  },
+  sdfPlanet: {
+    meanAlpha: { p10: 0.0122, p50: 0.0233, p90: 0.0307 },
+    solidFraction: { p10: 0.0054, p50: 0.0116, p90: 0.0178 },
+  },
   sdfTunnel: {
     meanAlpha: { p10: 0.2574, p50: 0.3294, p90: 0.3466 },
     solidFraction: { p10: 0.0241, p50: 0.0512, p90: 0.0809 },
@@ -345,6 +389,14 @@ export const GENERATOR_COVERAGE: CoverageTable = {
   seigaiha: {
     meanAlpha: { p10: 0.4073, p50: 0.5414, p90: 0.8914 },
     solidFraction: { p10: 0.415, p50: 0.5546, p90: 0.9126 },
+  },
+  selfSimilarZoom: {
+    meanAlpha: { p10: 0.1464, p50: 0.2546, p90: 0.3654 },
+    solidFraction: { p10: 0.0754, p50: 0.1385, p90: 0.2506 },
+  },
+  shockwave: {
+    meanAlpha: { p10: 0.4749, p50: 0.7812, p90: 0.8922 },
+    solidFraction: { p10: 0.4777, p50: 0.8074, p90: 0.9154 },
   },
   sleeperRail: {
     meanAlpha: { p10: 0.4945, p50: 0.7802, p90: 0.8958 },
