@@ -45,6 +45,13 @@ const VJ_CTL_PATH = process.env.VJ_CTL_PATH ?? `${import.meta.dirname}/vj-ctl.mj
  */
 const CATALOG_CACHE_PATH = `${import.meta.dirname}/.vj-catalog-cache.json`;
 
+// ---------------------------------------------------------------------------
+// 由来: src/synth/validate.ts の定数/関数をそのまま複製したもの（CLI は .ts を
+// import できないため）。AUDIO_SOURCES / SWELL_SOURCES は複製が古くなって落ちたので
+// vj-gen.mjs から import する。サーバ側のゲートと食い違うと「ローカルは通ったのに
+// サーバで弾かれる」が起きるので、validate.ts を変えたらここも合わせて直すこと。
+// ---------------------------------------------------------------------------
+
 const PALETTE_MODES = ['mono', 'analogous', 'complementary', 'triadic', 'rainbow'];
 
 const CATEGORY_RANK = { source: 0, field: 1, modifier: 2, material: 3 };
