@@ -47,7 +47,19 @@ const port = parsePort(process.argv.slice(2));
 
 // 127.0.0.1 固定。この中継は無認証で getSynthControl() を丸ごと開放するので、
 // LAN に晒すと同じネットワークの誰でも本番中の映像を差し替えられてしまう。
-const wss = new WebSocketServer({ host: '127.0.0.1', port });
+const wss = new WebSocketServer({
+  host: '127.0.0.1',
+  port,
+  verifyClient({ req }, done) {
+    const origin = req.headers.origin;
+    if (origin === undefined) return done(true);
+    try {
+      if (['localhost', '127.0.0.1', '[::1]'].includes(new URL(origin).hostname)) return done(true);
+    } catch {}
+    log(`rejected Origin: ${JSON.stringify(origin)}`);
+    done(false, 403);
+  },
+});
 
 /** 映像を出しているタブは 1 枚だけを正とする（複数あるとどこに届いたか分からない）。 */
 let synth = null;
