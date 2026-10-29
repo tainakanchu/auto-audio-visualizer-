@@ -31,6 +31,9 @@ import { spawnSync } from 'node:child_process';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { AUDIO_SOURCES, SWELL_SOURCES } from './vj-gen.mjs';
+
+export { AUDIO_SOURCES };
 
 /** vj-ctl.mjs の実体。同じ scripts/ ディレクトリに並ぶ前提で相対解決する。env で上書き可能。 */
 const VJ_CTL_PATH = process.env.VJ_CTL_PATH ?? `${import.meta.dirname}/vj-ctl.mjs`;
@@ -42,14 +45,6 @@ const VJ_CTL_PATH = process.env.VJ_CTL_PATH ?? `${import.meta.dirname}/vj-ctl.mj
  */
 const CATALOG_CACHE_PATH = `${import.meta.dirname}/.vj-catalog-cache.json`;
 
-// ---------------------------------------------------------------------------
-// 由来: src/synth/validate.ts の定数/関数をそのまま複製したもの（CLI は .ts を
-// import できないため）。scripts/vj-gen.mjs / scripts/vj-tweak.mjs にも同じ複製が
-// ある（CLI 間で import し合わない、という既存の方針に従う）。サーバ側のゲートと
-// 食い違うと「ローカルは通ったのにサーバで弾かれる」が起きるので、validate.ts を
-// 変えたらここも合わせて直すこと。
-// ---------------------------------------------------------------------------
-
 const PALETTE_MODES = ['mono', 'analogous', 'complementary', 'triadic', 'rainbow'];
 
 const CATEGORY_RANK = { source: 0, field: 1, modifier: 2, material: 3 };
@@ -60,20 +55,6 @@ const COUNT_LIMITS = {
   modifier: { min: 1, max: 3 },
   material: { min: 1, max: 1 },
 };
-
-/** 由来: src/synth/validate.ts の AUDIO_SOURCES。 */
-export const AUDIO_SOURCES = new Set([
-  'audio:bass',
-  'audio:mid',
-  'audio:treble',
-  'audio:level',
-  'audio:beat',
-  'audio:beatIntensity',
-  'audio:gridPulse',
-  'audio:barPulse',
-  'audio:barPhase',
-  'audio:beatPhase',
-]);
 
 /**
  * 由来: scripts/vj-ctl.mjs の TRANSITION_PRESETS のキー一覧だけを複製したもの。
