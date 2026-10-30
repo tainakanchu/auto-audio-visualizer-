@@ -181,6 +181,28 @@ function writePatchFile(dir, name, patch) {
 }
 
 describe('vj-set.mjs load', () => {
+  it('swell:group の modulation route を含むセットを読み込める', () => {
+    const patch = fixturePatch(0);
+    patch.routes = [{ source: 'swell:group', target: 'src0.amount', amount: 0.5, smoothing: 0.1 }];
+    writePatchFile(tmpDir, 's1.json', patch);
+    const setPath = writeSetFile(tmpDir, 'set.json', {
+      name: 'swell-set',
+      scenes: [{ cue: 's1', patch: 's1.json' }],
+    });
+
+    const result = runVjSet(['load', setPath, '--refresh-catalog']);
+
+    expect(result.status).toBe(0);
+    expect(JSON.parse(result.stdout)).toEqual({
+      ok: true,
+      name: 'swell-set',
+      applied: ['s1'],
+      skipped: [],
+      failures: [],
+    });
+    expect(readCallLog().map((c) => c.command)).toEqual(['catalog', 'state', 'event']);
+  });
+
   it('有効な2シーンのセットを読み込む: scene1 は --in 0、scene2 は --cue で送られる', () => {
     writePatchFile(tmpDir, 's1.json', fixturePatch(0));
     writePatchFile(tmpDir, 's2.json', fixturePatch(120));
